@@ -1,0 +1,563 @@
+---
+title: "Selecting Variables"
+format: html
+---
+
+# Load in Libraries
+
+```{r}
+library(remify)
+library(remstats)
+library(remstimate)
+library(shrinkem)
+library(tidyverse)
+library(MASS)
+library(future)
+library(future.apply)
+library(patchwork)
+library(brms)
+library(knitr)
+library(kableExtra)
+```
+
+```{r}
+load("../Functions/functions.RData")
+load("../GeneratedData/parameters.RData")
+```
+
+# Run Selection Function
+
+```{r}
+select_variables_independent_parallel(
+  m = c(100, 200, 400, 800, 1600, 3200, 6400),
+  n_edgelists = 100,
+  folder = "../Results/",
+  num_cores = 220
+)
+```
+
+# Discovery Rates
+
+## True Discovery Rates
+
+### Endogenous Predictors
+
+```{r}
+tdr_endo <- discovery_rate(folder = "../Results/03b_selected_variables_independent/",
+                           parameters = parameters,
+                           m = c(100, 200, 400, 800, 1600, 3200, 6400),
+                           num_edgelists = 100,
+                           endo = TRUE,
+                           tdr = TRUE,
+                           num_cores = 1
+                           )
+
+save(tdr_endo, file = "../Results/04b_discovery_rates_independent/true_discovery_rate_endogenous.RData")
+```
+
+### Exogenous Predictors
+
+```{r}
+tdr_exo_weak <- discovery_rate(folder = "../Results/03b_selected_variables_independent/",
+                           parameters = parameters,
+                           m = c(100, 200, 400, 800, 1600, 3200, 6400),
+                           num_edgelists = 100,
+                           endo = FALSE,
+                           tdr = TRUE,
+                           effect_size = log(1.22),
+                           num_cores = 1
+                           ) 
+
+save(tdr_exo_weak, file = "../Results/04b_discovery_rates_independent/true_discovery_rate_exogenous_weak.RData")
+
+tdr_exo_medium <- discovery_rate(folder = "../Results/03b_selected_variables_independent/",
+                           parameters = parameters,
+                           m = c(100, 200, 400, 800, 1600, 3200, 6400),
+                           num_edgelists = 100,
+                           endo = FALSE,
+                           tdr = TRUE,
+                           effect_size = log(1.86),
+                           num_cores = 1
+                           )
+
+save(tdr_exo_medium, file = "../Results/04b_discovery_rates_independent/true_discovery_rate_exogenous_medium.RData")
+
+tdr_exo_strong <- discovery_rate(folder = "../Results/03b_selected_variables_independent/",
+                           parameters = parameters,
+                           m = c(100, 200, 400, 800, 1600, 3200, 6400),
+                           num_edgelists = 100,
+                           endo = FALSE,
+                           tdr = TRUE,
+                           effect_size = log(3),
+                           num_cores = 1
+                           )
+
+save(tdr_exo_strong, file = "../Results/04b_discovery_rates_independent/true_discovery_rate_exogenous_strong.RData")
+
+tdr_exo <- discovery_rate(folder = "../Results/03b_selected_variables_independent/",
+                           parameters = parameters,
+                           m = c(100, 200, 400, 800, 1600, 3200, 6400),
+                           num_edgelists = 100,
+                           endo = FALSE,
+                           tdr = TRUE,
+                           num_cores = 1
+                           )
+
+save(tdr_exo, file = "../Results/04b_discovery_rates_independent/true_discovery_rate_exogenous.RData")
+```
+
+## False Discovery Rates
+
+### Endogenous Predictors
+
+```{r}
+fdr_endo <- discovery_rate(folder = "../Results/03b_selected_variables_independent/",
+                           parameters = parameters,
+                           m = c(100, 200, 400, 800, 1600, 3200, 6400),
+                           num_edgelists = 100,
+                           endo = TRUE,
+                           tdr = FALSE,
+                           num_cores = 1
+                           )
+
+save(fdr_endo, file = "../Results/04b_discovery_rates_independent/false_discovery_rate_endogenous.RData")
+```
+
+### Exogenous Predictors
+
+```{r}
+fdr_exo <- discovery_rate(folder = "../Results/03b_selected_variables_independent/",
+                           parameters = parameters,
+                           m = c(100, 200, 400, 800, 1600, 3200, 6400),
+                           num_edgelists = 100,
+                           endo = FALSE,
+                           tdr = FALSE,
+                           num_cores = 1
+                           )
+
+save(fdr_exo, file = "../Results/04b_discovery_rates_independent/false_discovery_rate_exogenous.RData")
+```
+
+## Plot Discovery Rates
+
+```{r}
+methods <- levels(as.factor(tdr_endo$discovery_rate$method))[!grepl("median", levels(as.factor(tdr_endo$discovery_rate$method)))]
+```
+
+### True Discovery Rates
+
+```{r}
+endog_plot_true <- plot_discovery_rate(tdr_endo$discovery_rate, criteria = methods,
+        title = "Endogenous")
+```
+
+```{r}
+weak_plot_true <- plot_discovery_rate(tdr_exo_weak$discovery_rate, criteria = methods,
+        title = "Weak Exogenous")
+
+medium_plot_true <- plot_discovery_rate(tdr_exo_medium$discovery_rate, criteria = methods,
+        title = "Medium Exogenous")
+
+strong_plot_true <- plot_discovery_rate(tdr_exo_strong$discovery_rate, criteria = methods,
+        title = "Strong Exogenous")
+```
+
+```{r}
+# Combine the plots and collect axis titles and legends
+combined_plot_true <- (endog_plot_true + weak_plot_true + medium_plot_true + strong_plot_true) +
+  plot_layout(guides = "collect") &  # Combine legends
+  theme(legend.position = "bottom",
+        legend.text = element_text(size = 9),
+        legend.title = element_text(size = 9),
+  plot.tag = element_text(size = 20, face = "bold")) & # Position the legend at the bottom
+  ylim(0,1)
+
+combined_plot_true <- combined_plot_true +
+  plot_annotation(tag_levels = "A")
+
+ggsave("../Plots/02_variable_selection/true_discovery_rates_independent.png", combined_plot_true, width = 12, height = 8)
+```
+
+### False Discovery Rates
+
+```{r}
+endog_plot_false <- plot_discovery_rate(fdr_endo$discovery_rate, criteria = methods,
+        title = "Endogenous")
+```
+
+```{r}
+exog_plot_false <- plot_discovery_rate(fdr_exo$discovery_rate, criteria = methods,
+        title = "Exogenous")
+```
+
+```{r}
+# Combine the plots and collect axis titles and legends
+combined_plot_false <- (endog_plot_false + exog_plot_false) +
+  plot_layout(guides = "collect", axis_titles = "collect") &  # Combine legends
+  theme(legend.position = "bottom",
+        legend.text = element_text(size = 9),
+        legend.title = element_text(size = 9),
+  plot.tag = element_text(size = 20, face = "bold")) & # Position the legend at the bottom
+  ylim(0, 0.7)
+
+combined_plot_false <- combined_plot_false +
+  plot_annotation(tag_levels = "A")
+
+ggsave("../Plots/02_variable_selection/false_discovery_rates_independent.png", combined_plot_false, width = 12, height = 5)
+```
+
+## Table
+
+### True Discovery Rate
+
+```{r}
+tdr_combined <- bind_rows(
+  tdr_endo$discovery_rate      %>% mutate(rate_type = "endo"),
+  tdr_exo_weak$discovery_rate  %>% mutate(rate_type = "exo_weak"),
+  tdr_exo_medium$discovery_rate%>% mutate(rate_type = "exo_medium"),
+  tdr_exo_strong$discovery_rate %>% mutate(rate_type = "exo_strong")
+) %>% 
+  dplyr::select(-lower, -upper)
+
+column_labels <- c(
+  "mle_05"              = "$\\alpha = 0.05$ (MLE)",
+  "abr_hs_95"           = "95\\% HDI (ABR HS)",
+  "abr_hs_mode_01"      = "|Mode| $\\ge 0.1$ (ABR HS)",
+  "abr_hs_median_01"    = "|Median| $\\ge 0.1$ (ABR HS)",
+  "abr_hs_mean_01"      = "|Mean| $\\ge 0.1$ (ABR HS)",
+  "abr_ridge_95"        = "95\\%-CI (ABR Ridge)",
+  "abr_ridge_mode_01"   = "|Mode| $\\ge 0.1$ (ABR Ridge)",
+  "abr_ridge_median_01" = "|Median| $\\ge 0.1$ (ABR Ridge)",
+  "abr_ridge_mean_01"   = "|Mean| $\\ge 0.1$ (ABR Ridge)",
+  "ebr_hs_95"           = "95\\% HDI (EBR HS)",
+  "ebr_hs_mode_01"      = "|Mode| $\\ge 0.1$ (EBR HS)",
+  "ebr_hs_mean_01"      = "|Mean| $\\ge 0.1$ (EBR HS)",
+  "ebr_hs_median_01"    = "|Median| $\\ge 0.1$ (EBR HS)"
+)
+
+
+tdr_wide <- tdr_combined %>%
+  mutate(
+    method = recode(method, !!!column_labels),
+    mean_se = if_else(
+      is.na(mean_discovery_rate) | is.na(se_discovery_rate),
+      NA_character_,
+      sprintf("%.3f (%.3f)", mean_discovery_rate, se_discovery_rate)
+    )
+  ) %>% 
+  dplyr::select(rate_type, m, method, mean_se) %>%
+  pivot_wider(
+    names_from   = method,
+    values_from  = mean_se
+  ) %>%
+  arrange(factor(rate_type, levels = c("endo","exo_weak","exo_medium","exo_strong")), m) %>% 
+  rowwise() %>%
+  mutate(across(
+    -c(rate_type, m),
+    ~ {
+      mean_val <- as.numeric(str_extract(.x, "^[0-9\\.]+"))
+      row_vals <- c_across(-c(rate_type, m)) %>%
+        str_extract("^[0-9\\.]+") %>%
+        as.numeric()
+      max_val <- max(row_vals, na.rm = TRUE)
+      if (!is.na(mean_val) && mean_val == max_val) {
+        cell_spec(.x, format = "latex", bold = TRUE)
+      } else {
+        .x
+      }
+    }
+  )) %>%
+  ungroup() %>%
+  mutate(across(
+    -c(rate_type, m),
+    ~ if_else(is.na(.x), "-", .x)
+  )) %>% 
+  kable(
+    format   = "latex",
+    booktabs = TRUE,
+    escape   = FALSE 
+  )
+
+```
+
+
+### False Discovery Rates
+```{r}
+fdr_combined <- bind_rows(
+  fdr_endo$discovery_rate      %>% mutate(rate_type = "endo"),
+  fdr_exo$discovery_rate  %>% mutate(rate_type = "exo")
+) %>% 
+  dplyr::select(-lower, -upper)
+
+
+fdr_wide <- fdr_combined %>%
+  mutate(
+    method = recode(method, !!!column_labels),
+    mean_se = if_else(
+      is.na(mean_discovery_rate) | is.na(se_discovery_rate),
+      NA_character_,
+      sprintf("%.3f (%.3f)", mean_discovery_rate, se_discovery_rate)
+    )
+  ) %>% 
+  dplyr::select(rate_type, m, method, mean_se) %>%
+  pivot_wider(
+    names_from   = method,
+    values_from  = mean_se
+  ) %>%
+  arrange(factor(rate_type, levels = c("endo","exo")), m) %>% 
+  rowwise() %>%
+  mutate(across(
+    -c(rate_type, m),
+    ~ {
+      mean_val <- as.numeric(str_extract(.x, "^[0-9\\.]+"))
+      row_vals <- c_across(-c(rate_type, m)) %>%
+        str_extract("^[0-9\\.]+") %>%
+        as.numeric()
+      min_val <- min(row_vals, na.rm = TRUE)
+      if (!is.na(mean_val) && mean_val == min_val) {
+        cell_spec(.x, format = "latex", bold = TRUE)
+      } else {
+        .x
+      }
+    }
+  )) %>%
+  ungroup() %>%
+  mutate(across(
+    -c(rate_type, m),
+    ~ if_else(is.na(.x), "-", .x)
+  )) %>% 
+  kable(
+    format   = "latex",
+    booktabs = TRUE,
+    escape   = FALSE 
+  )
+
+```
+
+
+
+# Distance Metrics
+
+## Endogenous Predictors
+
+```{r}
+discovery_rates_endo <- bind_rows(
+  tdr_endo$data %>% mutate(rate_type = "tdr"),
+  fdr_endo$data %>% mutate(rate_type = "fdr"))
+
+distances_endo <- discovery_rates_endo %>% 
+  pivot_wider(names_from = rate_type, values_from = discovery_rate) %>%
+  # Calculate the distance
+  mutate(distance = sqrt((1 - tdr)^2 + (fdr)^2)) %>% 
+    group_by(m, method) %>%
+    summarise(
+    mean_distance = mean(distance),
+    se_distance = sd(distance) /sqrt(n()),
+    .groups = 'drop'
+  ) %>%
+  ungroup() %>%
+  mutate(
+    lower = mean_distance - qnorm(0.975) * se_distance,
+    upper = mean_distance + qnorm(0.975) * se_distance
+  )
+
+# Plot
+endog_plot_dist <- plot_distance_metric(distances_endo, criteria = methods,
+        title = "Endogenous")
+```
+
+
+
+
+
+## Exogenous Predictors
+
+```{r}
+discovery_rates_exo <- bind_rows(
+  tdr_exo$data %>% mutate(rate_type = "tdr"),
+  fdr_exo$data %>% mutate(rate_type = "fdr"))
+
+distances_exo <- discovery_rates_exo %>% 
+  pivot_wider(names_from = rate_type, values_from = discovery_rate) %>%
+  # Calculate the distance
+  mutate(distance = sqrt((1 - tdr)^2 + (fdr)^2)) %>% 
+    group_by(m, method) %>%
+    summarise(
+    mean_distance = mean(distance),
+    se_distance = sd(distance) / sqrt(n()),
+    .groups = 'drop'
+  ) %>%
+  ungroup() %>%
+  mutate(
+    lower = mean_distance - qnorm(0.975) * se_distance,
+    upper = mean_distance + qnorm(0.975) * se_distance
+  )
+
+# Plot
+exog_plot_dist <- plot_distance_metric(distances_exo, criteria = methods,
+        title = "Exogenous")
+```
+
+## Combine Plots
+
+```{r}
+# Combine the plots and collect axis titles and legends
+combined_plot_dist <- (endog_plot_dist + exog_plot_dist) +
+  plot_layout(guides = "collect", axis_titles = "collect") &  # Combine legends
+  theme(legend.position = "bottom",
+        legend.text = element_text(size = 9),
+        legend.title = element_text(size = 9),
+  plot.tag = element_text(size = 20, face = "bold")) & # Position the legend at the bottom
+  ylim(0, 1)
+
+combined_plot_dist <- combined_plot_dist +
+  plot_annotation(tag_levels = "A")
+
+ggsave("../Plots/02_variable_selection/distance_plots_independent.png", combined_plot_dist, width = 12, height = 5)
+```
+
+### Table
+
+```{r}
+distances_combined <- bind_rows(
+  distances_endo %>% mutate(dist_type = "endo"),
+  distances_exo %>% mutate(dist_type = "exo")
+)
+
+distances_wide <- distances_combined %>%
+  mutate(
+    method = recode(method, !!!column_labels),
+    mean_se = if_else(
+      is.na(mean_distance) | is.na(se_distance),
+      NA_character_,
+      sprintf("%.3f (%.3f)", mean_distance, se_distance)
+    )
+  ) %>% 
+  dplyr::select(dist_type, m, method, mean_se) %>%
+  pivot_wider(
+    names_from   = method,
+    values_from  = mean_se
+  ) %>%
+  arrange(factor(dist_type, levels = c("endo","exo")), m) %>% 
+  rowwise() %>%
+  mutate(across(
+    -c(dist_type, m),
+    ~ {
+      mean_val <- as.numeric(str_extract(.x, "^[0-9\\.]+"))
+      row_vals <- c_across(-c(dist_type, m)) %>%
+        str_extract("^[0-9\\.]+") %>%
+        as.numeric()
+      min_val <- min(row_vals, na.rm = TRUE)
+      if (!is.na(mean_val) && mean_val == min_val) {
+        cell_spec(.x, format = "latex", bold = TRUE)
+      } else {
+        .x
+      }
+    }
+  )) %>%
+  ungroup() %>%
+  mutate(across(
+    -c(dist_type, m),
+    ~ if_else(is.na(.x), "-", .x)
+  )) %>% 
+  kable(
+    format   = "latex",
+    booktabs = TRUE,
+    escape   = FALSE 
+  )
+
+```
+
+
+# Matthews Correlation Coefficient
+
+## Endogenous Predictors
+
+```{r}
+mcc_endo <- mcc(data = fdr_endo$selection_data,
+    parameters = parameters,
+    endo = TRUE,
+    selection_label = "selected")
+
+mcc_exo <- mcc(data = fdr_exo$selection_data,
+    parameters = parameters,
+    endo = FALSE,
+    selection_label = "selected")
+```
+
+## Plot MCC
+
+```{r}
+endog_plot_mcc <- plot_mcc(mcc_endo, criteria = methods,
+        title = "Endogenous")
+exog_plot_mcc <- plot_mcc(mcc_exo, criteria = methods,
+        title = "Exogenous")
+
+combined_plot_mcc <- (endog_plot_mcc + exog_plot_mcc) +
+  plot_layout(guides = "collect") &  # Combine legends
+  theme(legend.position = "bottom",
+        legend.text = element_text(size = 9),
+        legend.title = element_text(size = 9),
+  plot.tag = element_text(size = 20, face = "bold")) & # Position the legend at the bottom
+  ylim(0,1)
+
+combined_plot_mcc <- combined_plot_mcc +
+  plot_annotation(tag_levels = "A")
+
+ggsave("../Plots/02_variable_selection/mcc_plots_independent.png", combined_plot_mcc, width = 12, height = 5)
+```
+
+### Table
+
+```{r}
+mcc_combined <- bind_rows(
+  mcc_endo      %>% mutate(rate_type = "endo"),
+  mcc_exo  %>% mutate(rate_type = "exo")
+) %>% 
+  dplyr::select(-lower, -upper)
+
+
+mcc_wide <- mcc_combined %>%
+  mutate(
+    method = recode(method, !!!column_labels),
+    mean_se = if_else(
+      is.na(mean) | is.na(se),
+      NA_character_,
+      sprintf("%.3f (%.3f)", mean, se)
+    )
+  ) %>% 
+  dplyr::select(rate_type, m, method, mean_se) %>%
+  pivot_wider(
+    names_from   = method,
+    values_from  = mean_se
+  ) %>%
+  arrange(factor(rate_type, levels = c("endo","exo")), m) %>% 
+  rowwise() %>%
+  mutate(across(
+    -c(rate_type, m),
+    ~ {
+      mean_val <- as.numeric(str_extract(.x, "^[0-9\\.]+"))
+      row_vals <- c_across(-c(rate_type, m)) %>%
+        str_extract("^[0-9\\.]+") %>%
+        as.numeric()
+      max_val <- max(row_vals, na.rm = TRUE)
+      if (!is.na(mean_val) && mean_val == max_val) {
+        cell_spec(.x, format = "latex", bold = TRUE)
+      } else {
+        .x
+      }
+    }
+  )) %>%
+  ungroup() %>%
+  mutate(across(
+    -c(rate_type, m),
+    ~ if_else(is.na(.x), "-", .x)
+  )) %>% 
+  kable(
+    format   = "latex",
+    booktabs = TRUE,
+    escape   = FALSE 
+  )
+```
+
+

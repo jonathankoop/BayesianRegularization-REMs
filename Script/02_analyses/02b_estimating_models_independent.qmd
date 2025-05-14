@@ -1,0 +1,192 @@
+---
+title: "Estimating the Models"
+format: html
+---
+
+```{r}
+library(remify)
+library(remstats)
+library(remstimate)
+library(shrinkem)
+library(tidyverse)
+library(MASS)
+library(future)
+library(future.apply)
+library(patchwork)
+library(brms)
+library(knitr)
+library(kableExtra)
+```
+
+```{r}
+source("../01_functions/functions.R")
+load("../GeneratedData/covar.RData")
+load("../GeneratedData/parameters.RData")
+```
+
+## Run Function
+
+```{r}
+# Define the expected m values and edgelist indices
+m_values <- c(100, 200, 400, 800, 1600, 3200, 6400)
+expected_edges <- 1:100
+
+# List all files in the directory that match the naming pattern
+files <- list.files("../Results/01c_estimates_independent", pattern = "estimates_m_.*_edgelist_.*\\.RData")
+
+# Function to extract m and edgelist number from a filename
+extract_values <- function(filename) {
+  pattern <- "estimates_m_(\\d+)_edgelist_(\\d+)\\.RData"
+  matches <- regexec(pattern, filename)
+  parts <- regmatches(filename, matches)[[1]]
+  as.numeric(parts[-1])
+}
+
+# Build a data frame with the extracted numbers from the available files
+if(length(files) > 0) {
+  file_info <- do.call(rbind, lapply(files, extract_values))
+  file_info <- data.frame(m = file_info[, 1], edge = file_info[, 2])
+} else {
+  file_info <- data.frame(m = numeric(0), edge = numeric(0))
+}
+
+# Create a task list for missing combinations
+task_list <- lapply(m_values, function(m_val) {
+  # For each m value, find which edgelist indices are missing
+  present_edges <- file_info$edge[file_info$m == m_val]
+  missing_edges <- setdiff(expected_edges, present_edges)
+  # For each missing edgelist index, create a task
+  lapply(missing_edges, function(edgelist_index) {
+    list(m_val = m_val,
+         edgelist_index = edgelist_index,
+         edgelist = get(load(paste0("../GeneratedData/edgelists_independent/", m_val, "/edgelist_", edgelist_index, ".RData"))) %>% 
+           head(m_val)
+         )
+  })
+})
+task_list <- unlist(task_list, recursive = FALSE)
+
+```
+
+```{r}
+t1 <- Sys.time()
+num_cores <- 175
+estimate_edgelists_independent(parameters,
+                            covar,
+                            folder = "../Results/",
+                            num_cores,
+                            seed = 123,
+                            task_list)
+t2 <- Sys.time()
+
+t2 -t1
+```
+
+# Evaluate Estimates
+
+```{r}
+t1 <- Sys.time()
+m <- c(100, 200, 400, 800, 1600, 3200, 6400)
+df_estimates_independent <- extract_estimates(m = m, n_edgelists = 100, folder = "../Results/01c_estimates_independent/",
+                               num_cores = 220
+)
+t2 <- Sys.time()
+```
+
+```{r}
+save(df_estimates_independent, file = "../Results/estimates_df_independent.RData")
+```
+
+
+## Assess Bias and Variance
+
+```{r}
+(bias_mle <- bias_estimates(parameters = parameters,
+               df_estimates = df_estimates_independent,
+               method = "mle"))
+
+(bias_abr_hs <- bias_estimates(parameters = parameters,
+                               df_estimates = df_estimates_independent,
+                               method = "abr_hs"))
+
+(bias_abr_ridge <- bias_estimates(parameters = parameters,
+                                  df_estimates = df_estimates_independent,
+                                  method = "abr_ridge"))
+```
+
+### Combine into LaTeX Table
+
+```{r}
+bias_all <- bind_rows(
+  bias_mle        %>% rename(mean = bias_mle_mean,   var = bias_mle_var)   %>% mutate(method = "mle"),
+  bias_abr_hs     %>% rename(mean = bias_abr_hs_mean, var = bias_abr_hs_var) %>% mutate(method = "abr_hs"),
+  bias_abr_ridge  %>% rename(mean = bias_abr_ridge_mean, var = bias_abr_ridge_var) %>% mutate(method = "abr_ridge")
+) %>% 
+  mutate(label = sprintf("%.3f (%.2f)", mean, var)) %>%   # single formatting step
+  dplyr::select(m, method, label) %>%                            # keep only what we need
+  pivot_wider(
+    names_from  = method,
+    values_from = label
+  ) %>% 
+  kable(
+    format = "latex",
+    col.names = c("Sample Size (M)", "MLE", "ABR HS", "ABR Ridge"),
+    booktabs = TRUE
+  )
+```
+
+
+
+# Plot Estimates
+
+## Define M Values to Plot
+
+```{r}
+m_plots <- c(100, 400, 1600, 6400)
+```
+
+## Maximum Likelihood
+
+```{r}
+plots_mle <- list()
+for (i in seq_along(m_plots)) {
+  plots_mle[[i]] <- plot_estimates(df_estimates_independent, parameters, m_val = m_plots[i], estimate = "mle", uncertainty = "ci")
+}
+
+plots_mle_combined <- wrap_plots(plots_mle, ncol = 2, guides = "collect") &
+  theme(legend.position = "bottom")
+
+ggsave("../Plots/01_coefficient_plots/plots_mle_independent.png", plots_mle_combined,
+       width = 10, height = 15)
+```
+
+## ABR with Horseshoe
+
+```{r}
+plots_abr_hs <- list()
+for (i in seq_along(m_plots)) {
+  plots_abr_hs[[i]] <- plot_estimates(df_estimates_independent, parameters, m_val = m_plots[i], estimate = "abr_hs", uncertainty = "ci")
+}
+
+plots_abr_hs_combined <- wrap_plots(plots_abr_hs, ncol = 2, guides = "collect") &
+  theme(legend.position = "bottom")
+
+ggsave("../Plots/01_coefficient_plots/plots_abr_hs_independent.png", plots_abr_hs_combined,
+       width = 10, height = 15)
+```
+
+## ABR with Ridge
+
+```{r}
+plots_abr_ridge <- list()
+for (i in seq_along(m_plots)) {
+  plots_abr_ridge[[i]] <- plot_estimates(df_estimates_independent, parameters, m_val = m_plots[i], estimate = "abr_ridge", uncertainty = "ci")
+}
+
+plots_abr_ridge_combined <- wrap_plots(plots_abr_ridge, ncol = 2, guides = "collect") &
+  theme(legend.position = "bottom")
+
+ggsave("../Plots/01_coefficient_plots/plots_abr_ridge_independent.png", plots_abr_ridge_combined,
+       width = 10, height = 15)
+
+```

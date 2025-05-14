@@ -1,0 +1,731 @@
+---
+title: "Preparing Spotify Data"
+author: "Jonathan Koop"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(pacman)
+p_load("tidyverse", "igraph", "httr", "jsonlite", "rvest", "stringr", "stringdist", "remify", "remstats", "remstimate")
+```
+
+
+## Reading in the Data
+```{r}
+data <- read.csv("../../RawData/Spotify/Spotify_long_trimmed.csv")
+data_raw <- read.csv("../../RawData/Spotify/Spotify_long.csv")
+```
+
+
+# Explore Data
+
+## Explore Variables and Values
+
+```{r}
+head(data)
+names(data)
+```
+
+## Check how many Artists have name but no ID
+
+```{r}
+data_raw %>%
+  filter(is.na(Artist_IDs) & !is.na(Artist_Names)) %>%
+  nrow()
+
+data %>%
+  filter(is.na(Artist_IDs) & !is.na(Artist_Names)) %>%
+  nrow()
+```
+
+# Clean Data
+
+## Clean Artist Strings
+
+```{r}
+data$Artist_Names <- gsub("^[\\['\"]+|[\\['\"]+$", "", data$Artist_Names)
+```
+
+## Add `genre` and `Artist_Popularity` to Data
+
+```{r}
+# df with song_id and genre
+genre <- data_raw %>%
+  dplyr::select(Song_ID, genre) %>%
+  distinct(Song_ID, .keep_all = TRUE)
+
+# match genre to data
+data <- left_join(data, genre, by = "Song_ID")
+```
+
+
+### Inspect Genre Variable
+```{r}
+sum(is.na(data$genre)) # number of missing values 
+
+# number of observations where genre contains "classical"
+data %>%
+  filter(grepl("classical", genre, ignore.case = TRUE)) %>%
+  nrow()
+
+data %>%
+  filter(grepl("german", genre, ignore.case = TRUE))
+```
+
+## Artist Popularity
+```{r}
+# df with artist_names and artist_popularity
+artist_popularity <- data_raw %>%
+  dplyr::select(Artist_Names, Artist_Popularity) %>%
+  mutate(Artist_Names = gsub("^[\\['\"]+|[\\['\"]+$", "", Artist_Names)) %>%
+  distinct(Artist_Names, .keep_all = TRUE)
+
+# Check distribution of Artist Popularity
+hist(artist_popularity$Artist_Popularity)
+
+```
+
+
+```{r}
+sum(is.na(data$Artist_Popularity))
+sum(is.na(artist_popularity$Artist_Popularity))
+```
+
+
+## Remove Artists with only 1 Song
+
+```{r}
+multiplesongs <- which(table(data$Artist_Name) > 1)
+data_mult <- data[data$Artist_Names %in% names(multiplesongs),]
+```
+
+
+## Reshape Data to Wide Format
+
+```{r}
+data_wide <- data %>%
+  group_by(Song_ID, Songname, release_date, Song_Pop.2019, Song_Pop.2022, Song_Pop.2023a, Song_Pop.2023b, genre) %>%
+  mutate(artist_number = paste0("Artist_", row_number())) %>%
+  pivot_wider(
+    id_cols = c(Song_ID, Songname, release_date, Song_Pop.2019, Song_Pop.2022, Song_Pop.2023a, Song_Pop.2023b, genre),
+    names_from = artist_number,
+    values_from = Artist_Names
+  ) %>%
+  ungroup()
+```
+
+
+## Explore Number of Artists per Song
+
+```{r}
+data_wide %>%
+  filter(!is.na(Artist_2)) %>%
+  nrow()
+
+# 46000 songs with 2 artists
+
+data_wide %>%
+  filter(!is.na(Artist_3)) %>%
+  nrow()
+
+# 12000 songs with 3 artists
+
+data_wide %>%
+  filter(!is.na(Artist_4)) %>%
+  nrow()
+```
+
+
+## Subset to Analysis Sample
+
+```{r}
+# Only keep songs with 2 artists
+data_analysis <- data_wide %>%
+  filter(!is.na(Artist_2) & is.na(Artist_3)) %>%
+  dplyr::select(release_date, Artist_1, Artist_2, genre)
+
+# Remove rows with "classical" in genre
+data_analysis <- data_analysis %>%
+  filter(!grepl("classical", genre, ignore.case = TRUE))
+
+# most prominent Artist_1
+data_analysis %>%
+  count(Artist_1) %>%
+  arrange(desc(n)) %>%
+  head(10)
+```
+
+## Retrieve Artist Names From List of Colaborations
+
+```{r}
+artists <- data_analysis %>%
+  dplyr::select(starts_with("Artist_")) %>%
+  pivot_longer(cols = everything(), values_drop_na = TRUE) %>%
+  distinct(value) %>%
+  pull()
+
+# add artist popularity to artists
+artist_popularity <- artist_popularity %>%
+  filter(Artist_Names %in% artists)
+
+# distribution of artist popularity
+hist(artist_popularity$Artist_Popularity)
+```
+
+## Remove Self-Loops (Artists collaborating with themselves)
+
+```{r}
+data_analysis %>%
+  filter(Artist_1 == Artist_2)
+
+data_analysis <- data_analysis %>%
+  filter(Artist_1 != Artist_2)
+```
+
+
+# Infer Gender
+
+## Wikipedia Function
+
+```{r}
+gender_wiki <- function(name) {
+  
+  # Create URL for Wikipedia API
+  url <- paste0("https://en.wikipedia.org/api/rest_v1/page/summary/",
+                URLencode(name) # URL encode artist name (in case of special characters, spaces, etc.)
+                )
+  
+  # GET request to Wikipedia API
+  response <- GET(url)
+  
+  # Check if response status == OK
+  if (status_code(response) == 200) {
+    # Get response if ok
+    content <- fromJSON(content(response, "text", encoding = "UTF-8"))
+    
+    # Get extract fron content
+    if (!is.null(content$extract)) {
+      first_sentence <- content$extract
+      
+      # Infer gender based on pronouns in extract
+      if (grepl("\\b(she|her)\\b", first_sentence, ignore.case = TRUE)) {
+        return("female")
+      } else if (grepl("\\b(he|his)\\b", first_sentence, ignore.case = TRUE)) {
+        return("male")
+      } else if (grepl("\\b(band|group|duo|trio)\\b", first_sentence, ignore.case = TRUE)) {
+        return("band")
+      } else {
+        return("no gender in extract")
+      }
+    } else {
+      return("no summary")
+    }
+  } else {
+    return("not found")
+  }
+}
+```
+
+## Last.fm Function
+
+```{r}
+gender_lastfm <- function(name) {
+  # Function to  get bio through Last.fm API
+  get_bio <- function(artist_name) {
+    # Create URL for Last.fm API
+    url <- paste0("http://ws.audioscrobbler.com/2.0/?method=artist.getinfo&artist=", 
+                  URLencode(artist_name, reserved = TRUE), # set reserved = TRUE to encode special characters
+                  "&api_key=", api_key, 
+                  "&format=json")
+    
+    #  GET request to API
+    response <- GET(url)
+    content <- content(response, as = "text", encoding = "UTF-8")
+    
+    # Try to extract the bio, if no return NULL
+    bio <- tryCatch({
+      fromJSON(content)$artist$bio$summary
+    }, error = function(e) {
+      return(NULL)
+    })
+    
+    return(bio)
+  }
+  
+  # First try get bio
+  bio <- get_bio(name)
+  
+  # If empty "not found"
+  if (is.null(bio)) {
+    return("not found")
+  }
+  
+  # Check for "non-artist" message (spelling correction suggestion)
+  if (grepl("non-artist", bio, ignore.case = TRUE)) {
+    # get new name
+    match <- regexpr('The exact spelling is \\"(.*?)\\"', bio)
+    if (match[1] != -1) {
+      corrected_name <- gsub('The exact spelling is \\"(.*?)\\"', "\\1", regmatches(bio, match)[1])
+      
+      # Second try get bio
+      bio <- get_bio(corrected_name)
+      
+      # "not found" if bio still NULL
+      if (is.null(bio)) {
+        return("not found")
+      }
+    }
+  }
+  
+  # FOR MULTIPLE BIOS IN ONE (i.e. "1) ... 2) ...") 
+  
+  # Check for "1)" and "2)" and extract relevant string
+  if (grepl("1\\)", bio) && grepl("2\\)", bio)) {
+    bio <- sub(".*?1\\)(.*?)2\\).*", "\\1", bio)
+  }
+  
+  # Analyze bio for gender or group info
+  if (length(bio) > 0 && bio != "") {
+    if (grepl("\\b(she|her)\\b", bio, ignore.case = TRUE)) {
+      return("female")
+    } else if (grepl("\\b(he|his)\\b", bio, ignore.case = TRUE)) {
+      return("male")
+    } else if (grepl("\\b(band|group|duo|trio)\\b", bio, ignore.case = TRUE)) {
+      return("band")
+    } else if (startsWith(bio, ' <a href=\"https://www.last.fm/music/')) {
+      return("empty bio")
+    } else {
+      return("no info in bio")
+    }
+  } else {
+    return("not found")
+  }
+}
+```
+
+```{r}
+library(RSelenium)
+library(rvest)
+library(stringr)
+
+# Start a RSelenium server and browser session (adjust 'chromever' according to your installed Chrome version)
+rD <- rsDriver(browser = "chrome", chromever = "latest", port = 4545L)
+remDr <- rD[["client"]]
+
+```
+
+
+## Discogs Function
+
+```{r}
+gender_discogs <- function(artist_name, discogs_token) {
+  # GET request to Discogs API
+  response <- GET("https://api.discogs.com/database/search",
+                  query = list(
+                    q = artist_name,
+                    type = "artist",
+                    token = discogs_token
+                  ))
+  
+  # Check if request successful
+  if (status_code(response) != 200) {
+    return("not found")
+  }
+  
+  # Parse JSON response
+  result <- content(response, "text", encoding = "UTF-8")
+  data <- fromJSON(result)
+  
+  # Extract artist information (titles and ids)
+  artists_info <- data$results
+  if (length(artists_info) == 0) {
+    return("not found")  # No artists found
+  }
+  
+  # Create a dataframe with artist titles and ids
+  artist_titles <- artists_info$title
+  artist_ids <- artists_info$id
+  
+  # Combine into a dataframe
+  artist_df <- data.frame(
+    title = artist_titles,
+    id = artist_ids,
+    stringsAsFactors = FALSE
+  )
+  
+  # Calculate Levenshtein distance between artist_name and artist title
+  artist_df$distance <- stringdist::stringdist(artist_df$title, artist_name, method = "lv")
+  
+  # Find row with minimum distance (most similar artist)
+  best_match <- artist_df[which.min(artist_df$distance), ]
+  
+  # Extract  artist ID of most similar artist
+  artist_id <- best_match$id
+  
+  # Check if artist_id is valid
+  if (is.null(artist_id) || artist_id == "") {
+    return("not found")
+  }
+  
+  # Call api for artist bio
+  artist_url <- paste0("https://api.discogs.com/artists/", artist_id)
+  
+  artist_response <- GET(artist_url, query = list(token = discogs_token))
+  
+  # Check if request successful or if bio exists
+  if (status_code(artist_response) != 200) {
+    return("not found")
+  }
+  
+  # Parse JSON
+  artist_details <- fromJSON(content(artist_response, "text", encoding = "UTF-8"))
+  
+  # Check if bio available
+  artist_bio <- artist_details$profile
+  if (is.null(artist_bio) || artist_bio == "") {
+    return("not found")
+  }
+  
+  # 
+  
+  # Analyze bio for gender or group information
+  gender_info <- "not found"
+  
+  if (length(artist_bio) > 0 && artist_bio != "") {
+    if (grepl("\\b(she|her)\\b", artist_bio, ignore.case = TRUE)) {
+      gender_info <- "female"
+    } else if (grepl("\\b(he|his)\\b", artist_bio, ignore.case = TRUE)) {
+      gender_info <- "male"
+    } else if (grepl("\\b(band|group|duo|trio)\\b", artist_bio, ignore.case = TRUE)) {
+      gender_info <- "band"
+    } else if (startsWith(artist_bio, ' <a href=\"https://www.last.fm/music/')) {
+      gender_info <- "empty bio"
+    } else {
+      gender_info <- "no info in bio"
+    }
+  }
+  
+  return(gender_info)
+}
+```
+
+## Type in Tokens/Keys
+
+```{r}
+load("../../tokens.RData")
+```
+
+
+## Compare Computation Time of The Functions
+
+```{r}
+set.seed(123)
+
+sample <- sample(length(artists), 50)
+t1_wiki <- Sys.time()
+gender_results_wiki <- sapply(artists[sample], gender_wiki)
+t2_wiki <- Sys.time()
+gender_results_lastfm <- sapply(artists[sample], gender_lastfm)
+t2_lastfm <- Sys.time()
+gender_results_discogs <- sapply(artists[sample], gender_discogs, discogs_token)
+t2_discogs <- Sys.time()
+
+
+# calculate time taken
+time_wiki <- t2_wiki - t1_wiki
+time_lastfm <- t2_lastfm - t2_wiki
+time_lastfm <- t2_discogs - t2_lastfm
+```
+
+## Combine Results
+```{r}
+binded <- data.frame(wiki = gender_results_wiki,
+                     lastfm = gender_results_lastfm,
+                     discogs = gender_results_discogs)
+```
+
+## Evaluate Performance (Error Rate)
+
+## Manually Label values
+
+```{r}
+rownames(binded)
+labels <- c("male", "male", "band", "male", "male", "male", "male", "male", "male", "male", NA, "male", "female", NA, NA, "male", "male", NA, "male",
+  "male", "male", "male", "male", "band", NA, "male", "male", "female", "male", "male", "male", "male", "male", "male", "male", "male",
+  "female", "female", "male", "male", "female", NA, NA, "male", "male", "band", NA, "male", "female", "male")
+
+# bind labels with binded
+binded <- cbind(binded, labels)
+```
+
+### Calculate Error Rates
+
+```{r}
+# Only use rows where labels are not NA
+binded_nona <- binded[!is.na(binded$labels),]
+
+# calculate error rate
+error_rate_wiki <- sum(binded_nona$wiki != binded_nona$labels) / nrow(binded_nona)
+error_rate_lastfm <- sum(binded_nona$lastfm != binded_nona$labels) / nrow(binded_nona)
+error_rate_discogs <- sum(binded_nona$discogs != binded_nona$labels) / nrow(binded_nona)
+
+# number of classified cases by method
+n_wiki <- sum(binded_nona$wiki %in% c("male", "female", "band"))
+n_lastfm <- sum(binded_nona$lastfm %in% c("male", "female", "band"))
+n_discogs <- sum(binded_nona$discogs %in% c("male", "female", "band"))
+
+# proportion of classified cases
+prop_wiki <- n_wiki / nrow(binded_nona)
+prop_lastfm <- n_lastfm / nrow(binded_nona)
+prop_discogs <- n_discogs / nrow(binded_nona)
+
+# error rate only considering classified cases
+error_rate_wiki <- sum(binded_nona[binded_nona$wiki %in% c("male", "female", "band"),]$wiki != binded_nona[binded_nona$wiki %in% c("male", "female", "band"),]$labels) / nrow(binded_nona[binded_nona$wiki %in% c("male", "female", "band"),])
+error_rate_lastfm <- sum(binded_nona[binded_nona$lastfm %in% c("male", "female", "band"),]$lastfm != binded_nona[binded_nona$lastfm %in% c("male", "female", "band"),]$labels) / nrow(binded_nona[binded_nona$lastfm %in% c("male", "female", "band"),])
+error_rate_discogs <- sum(binded_nona[binded_nona$discogs %in% c("male", "female", "band"),]$discogs != binded_nona[binded_nona$discogs %in% c("male", "female", "band"),]$labels) / nrow(binded_nona[binded_nona$discogs %in% c("male", "female", "band"),])
+
+# proportion of not found cases
+prop_not_found_lastfm <- sum(binded_nona$lastfm %in% c("not found", "no info in bio", "empty bio")) / nrow(binded_nona)
+getwd()
+```
+
+# Run `gender_lastfm` on all artists
+
+```{r, eval = FALSE}
+t1 <- Sys.time()
+gender_lastfm <- sapply(artists, gender_lastfm)
+t2 <- Sys.time()
+
+# save results
+save(gender_lastfm, file = "gender_lastfm.RData")
+```
+
+```{r}
+load("../../RawData/Spotify/gender_lastfm.RData")
+```
+
+
+## Summarize Results
+
+```{r}
+table(gender_lastfm)
+```
+
+```{r}
+# get artist names for those that are male or female
+artist_names <- gender_lastfm[gender_lastfm %in% c("male", "female")]
+artist_names <- names(artist_names)
+```
+
+## Check if Bands Collaborate
+
+```{r}
+bands <- names(gender_lastfm[gender_lastfm == "band"])
+
+band_colabs <- data_analysis %>%
+  filter(Artist_1 %in% bands | Artist_2 %in% bands) %>%
+  nrow()
+```
+
+Bands collaborate in `r band_colabs` collaborations.
+
+## Check correlation between artist popularity and success of gender function
+```{r}
+gender_df <- data.frame(Artist_Names = names(gender_lastfm),
+                        gender = gender_lastfm)
+
+# left join gender_lastfm with artist_popularity
+artist_popularity <- left_join(artist_popularity, gender_df, by = "Artist_Names")
+artist_popularity$gender <- as.factor(artist_popularity$gender)
+
+# box plot of Artist_Popularity by gender
+ggplot(artist_popularity, aes(x = gender, y = Artist_Popularity)) +
+  geom_boxplot() +
+  theme_minimal()
+
+sum(is.na(artist_popularity$gender))
+
+# anova test
+anova_test <- aov(Artist_Popularity ~ gender, data = artist_popularity)
+summary(anova_test)
+
+levels(artist_popularity$gender)
+# t-test between c("empty bio", "no info in bio", "not found") and c("male", "female", "band")
+artist_popularity$found <- ifelse(artist_popularity$gender %in% c("empty bio", "no info in bio", "not found"), "not found", "found")
+t.test(Artist_Popularity ~ found, data = artist_popularity)
+```
+### Plot Proportion of Found Cases by Popularity Threshold
+```{r}
+thresholds <- seq(0, 100, by = 5)
+props <- as.data.frame(matrix(nrow = length(thresholds), ncol = 4))
+
+for (i in seq_along(thresholds)) {
+  
+  artists_filtered <- artist_popularity %>%
+    filter(Artist_Popularity >= thresholds[i]) %>%
+    dplyr::select(Artist_Names) %>%
+    pull()
+  
+  props[i,1] <- thresholds[i]
+  props[i, c(2,3)] <- artist_popularity_filtered <- artist_popularity %>%
+    filter(Artist_Names %in% artists_filtered) %>%
+    count(found) %>%
+    mutate(proportion = n / sum(n)) %>%
+    filter(found == "found") %>%
+    dplyr::select(n, proportion)
+  
+  # number of songs in data_analysis by popularity threshold
+  props[i,4] <- data_analysis %>%
+    filter(Artist_1 %in% artists_filtered & Artist_2 %in% artists_filtered) %>%
+    nrow()
+
+}
+
+names(props) <- c("threshold", "n", "proportion", "n_songs")
+
+# plot with proportion of found cases by popularity threshold
+ggplot(props, aes(x = threshold, y = proportion)) +
+  geom_line() +
+  labs(x = "Popularity Threshold", y = "Proportion of Found Cases", title = "Proportion of Found Cases by Popularity Threshold") +
+  theme_minimal()
+
+# save plot
+ggsave("Plots/prop_popularity_threshold.png", height = 5, width = 7)
+
+# plot with number of artists by popularity threshold
+ggplot(props, aes(x = threshold, y = n)) +
+  geom_line() +
+  labs(x = "Popularity Threshold", y = "Number of Artists", title = "Number of Found Artists by Popularity Threshold") +
+  theme_minimal()
+
+# save plot
+ggsave("Plots/n_popularity_threshold.png", height = 5, width = 7)
+
+# plot with number of songs by popularity threshold
+ggplot(props, aes(x = threshold, y = n_songs)) +
+  geom_line() +
+  labs(x = "Popularity Threshold", y = "Number of Songs/Events", title = "Number of Songs (Events) by Popularity Threshold") +
+  theme_minimal()
+
+# save plot
+ggsave("Plots/n_songs_popularity_threshold.png", height = 5, width = 7)
+
+# save props table
+save(props, file = "Data/proportions-by-pop-thres.RData")
+```
+
+
+# Simple Network Analysis
+
+## Statistics
+
+```{r}
+g <- graph_from_data_frame(data_analysis[,2:3], directed = FALSE)
+
+# highest degree centrality
+sort(degree(g), decreasing = TRUE)[1:10]
+
+# highest betweenness centrality
+sort(betweenness(g), decreasing = TRUE)[1:10]
+
+# highest closeness centrality
+sort(closeness(g), decreasing = F)[1:10]
+```
+
+
+# First REM Analysis
+
+## Subset to Popular Artists
+
+```{r}
+popular_artists <- artist_popularity %>% 
+  arrange(desc(Artist_Popularity)) %>% 
+  head(100) %>%
+  dplyr::select(Artist_Names) %>% 
+  pull()
+
+data_popular <- data_analysis %>% 
+  filter(Artist_1 %in% popular_artists & Artist_2 %in% popular_artists) %>% 
+  mutate(Gender_Artist_1 = gender_lastfm[Artist_1],
+         Gender_Artist_2 = gender_lastfm[Artist_2]) %>% 
+  filter(Gender_Artist_1 %in% c("male", "female") &
+           Gender_Artist_2 %in% c("male", "female"))
+```
+
+
+```{r}
+# subset to artists that collaborated at least twice
+artists_freq <- c(data_popular$Artist_1, data_popular$Artist_2) %>%
+  table() %>%
+  as.data.frame(
+    stringsAsFactors = FALSE
+  ) %>%
+  filter(Freq > 1) %>%
+  pull(1)
+
+data_popular <- data_popular %>% 
+  filter(Artist_1 %in% artists_freq & Artist_2 %in% artists_freq)
+```
+
+
+```{r}
+save(data_popular, file =  "../../CleanedData/Data_Popular_100.RData")
+```
+
+```{r}
+covar <- artists_freq %>%
+  as.data.frame() %>%
+  dplyr::rename(name = !!sym(".")) %>% 
+  mutate(
+    gender = gender_lastfm[name],
+    gender = recode(gender, `male` = 0, `female` = 1),
+    popularity = artist_popularity$Artist_Popularity[match(name, artist_popularity$Artist_Names)],
+    time = 0
+  ) %>%
+  filter(gender %in% c(0, 1))
+
+save(covar, file =  "../../CleanedData/covar_spotify.RData")
+```
+## Analyze Genre Levels
+
+```{r}
+library(stringr)
+
+# Step 1 & 2: Extract and clean genres from each string
+genre_list <- lapply(data_raw$genre, function(x) {
+  # Extract tokens between single quotes
+  tokens <- str_extract_all(x, "(?<=')[^']+(?=')")[[1]]
+  # Trim any whitespace
+  tokens <- trimws(tokens)
+  # Remove empty tokens
+  tokens <- tokens[tokens != ""]
+  # Filter to keep tokens that are likely valid genre names 
+  # (allow letters, numbers, spaces, ampersands, hyphens, and apostrophes)
+  tokens <- tokens[grepl("^[a-zA-Z0-9 &'-]+$", tokens)]
+  unique(tokens)
+})
+
+# Step 3: Flatten the list and get frequency counts
+all_genres <- unlist(genre_list)
+genre_freq <- sort(table(all_genres), decreasing = TRUE)
+top_genres <- names(genre_freq)[1:10]
+print(top_genres)
+
+data_raw$simple_genre <- sapply(genre_list, function(genres) {
+  # Find intersection with the top genres
+  common <- intersect(genres, top_genres)
+  if (length(common) > 0) {
+    # Optionally, pick the first one (or use your own criteria)
+    return(common[1])
+  } else {
+    return("Other")
+  }
+})
+
+```
+

@@ -1,0 +1,427 @@
+---
+title: "Predictive Performance"
+format: html
+---
+
+# Load in Libraries
+
+```{r}
+library(remify)
+library(remstats)
+library(remstimate)
+library(shrinkem)
+library(tidyverse)
+library(MASS)
+library(future)
+library(future.apply)
+library(patchwork)
+library(knitr)
+library(kableExtra)
+```
+
+```{r}
+source("../01_functions/functions.R")
+load("../GeneratedData/covar.RData")
+load("../GeneratedData/parameters.RData")
+```
+
+# Load and Combine edgelists
+
+```{r}
+edgelists <- list()
+files <- list.files("../GeneratedData/edgelists")
+files <- files[grepl("edgelist_", files)]
+
+for (i in seq_along(files)) {
+  load(paste0("../GeneratedData/edgelists/", files[i]))
+  
+  edgelists[[i]] <- edgelist
+}
+```
+
+# Compute Statistics
+
+```{r}
+calculate_statistics_parallel(edgelists, parameters, covar, results_folder, num_cores = 20)
+```
+
+# Predictive Performance In-Sample
+
+### Top 5%
+
+```{r}
+t1 <- Sys.time()
+pp_is_parallel(edgelists = edgelists,
+               m = c(100, 200, 400, 800, 1600, 3200, 6400), 
+               parameters,
+               covar,
+               results_folder = "../Results/",
+               output_folder = "../Results/05a_predictive_performance_is/01_top5/",
+               statistics_folder = "../Results/06_statistics/",
+               num_cores = 100,
+               quantile = 0.95)
+t2 <- Sys.time()
+```
+
+### Top 10%
+
+```{r}
+t1 <- Sys.time()
+pp_is_parallel(edgelists = edgelists,
+              m = c(100, 200, 400, 800, 1600, 3200, 6400), 
+               parameters,
+               covar,
+               results_folder = "../Results/",
+               output_folder = "../Results/05a_predictive_performance_is/02_top10/",
+               statistics_folder = "../Results/06_statistics/",
+               num_cores = 100,
+               quantile = 0.90)
+t2 <- Sys.time()
+```
+
+### Top 20%
+
+```{r}
+t1 <- Sys.time()
+pp_is_parallel(edgelists = edgelists,
+              m = c(100, 200, 400, 800, 1600, 3200, 6400), 
+               parameters,
+               covar,
+               results_folder = "../Results/",
+               output_folder = "../Results/05a_predictive_performance_is/03_top20/",
+               statistics_folder = "../Results/06_statistics/",
+               num_cores = 100,
+               quantile = 0.80)
+t2 <- Sys.time()
+```
+
+## Plots
+
+```{r}
+plot_top5 <- plot_pp(pp_folder = "../Results/05a_predictive_performance_is/01_top5/",
+        m = c(100, 200, 400, 800, 1600, 3200, 6400),
+        num_edgelists = 100,
+        title = "Top 5%")
+
+plot_top10 <- plot_pp(pp_folder = "../Results/05a_predictive_performance_is/02_top10/",
+        m = c(100, 200, 400, 800, 1600, 3200, 6400),
+        num_edgelists = 100,
+        title = "Top 10%")
+
+plot_top20 <- plot_pp(pp_folder = "../Results/05a_predictive_performance_is/03_top20/",
+        m = c(100, 200, 400, 800, 1600, 3200, 6400),
+        num_edgelists = 100,
+        title = "Top 20%")
+```
+
+```{r}
+# Combine the plots and collect axis titles and legends
+combined_plot_pp_is <- (plot_top20 + plot_top10 + plot_top5) +
+  plot_layout(guides = "collect", axis_titles = "collect") &  # Combine legends
+  theme(legend.position = "bottom",
+        legend.text = element_text(size = 10),
+  plot.tag = element_text(size = 20, face = "bold")) & # Position the legend at the bottom
+  ylim(0.65, 1)
+
+combined_plot_pp_is <- combined_plot_pp_is +
+  plot_annotation(tag_levels = "A")
+
+ggsave("../Plots/03_predictive_performance/pp_is_plots.png", combined_plot_pp_is, width = 12, height = 5)
+```
+
+## Sparse Models
+
+### Top 5%
+
+```{r}
+t1 <- Sys.time()
+pp_is_sparse_parallel(edgelists = edgelists,
+               m = c(100, 200, 400, 800, 1600, 3200, 6400), 
+               parameters,
+               covar,
+               results_folder = "../Results/",
+               output_folder = "../Results/05a_predictive_performance_is/04_top5_sparse/",
+               statistics_folder = "../Results/06_statistics/",
+               selected_folder = "../Results/03_selected_variables/",
+               num_cores = 60,
+               quantile = 0.95)
+t2 <- Sys.time()
+```
+
+### Top 10%
+
+```{r}
+t1 <- Sys.time()
+pp_is_sparse_parallel(edgelists = edgelists,
+               m = c(100, 200, 400, 800, 1600, 3200, 6400), 
+               parameters,
+               covar,
+               results_folder = "../Results/",
+               output_folder = "../Results/05a_predictive_performance_is/05_top10_sparse/",
+               statistics_folder = "../Results/06_statistics/",
+               selected_folder = "../Results/03_selected_variables/",
+               num_cores = 100,
+               quantile = 0.90)
+t2 <- Sys.time()
+```
+
+### Top 20%
+
+```{r}
+t1 <- Sys.time()
+pp_is_sparse_parallel(edgelists = edgelists,
+               m = c(100, 200, 400, 800, 1600, 3200, 6400), 
+               parameters,
+               covar,
+               results_folder = "../Results/",
+               output_folder = "../Results/05a_predictive_performance_is/06_top20_sparse/",
+               statistics_folder = "../Results/06_statistics/",
+               selected_folder = "../Results/03_selected_variables/",
+               num_cores = 100,
+               quantile = 0.80)
+t2 <- Sys.time()
+```
+
+## Plots
+
+```{r}
+plot_top5 <- plot_pp_sparse(pp_folder = "../Results/05a_predictive_performance_is/04_top5_sparse/",
+        m = c(100, 200, 400, 800, 1600, 3200, 6400),
+        num_edgelists = 100,
+        title = "Top 5%")
+
+plot_top10 <- plot_pp_sparse(pp_folder = "../Results/05a_predictive_performance_is/05_top10_sparse/",
+        m = c(100, 200, 400, 800, 1600, 3200, 6400),
+        num_edgelists = 100,
+        title = "Top 10%")
+
+plot_top20 <- plot_pp_sparse(pp_folder = "../Results/05a_predictive_performance_is/06_top20_sparse/",
+        m = c(100, 200, 400, 800, 1600, 3200, 6400),
+        num_edgelists = 100,
+        title = "Top 20%")
+```
+
+```{r}
+# Combine the plots and collect axis titles and legends
+combined_plot_pp_is <- (plot_top20 + plot_top10 + plot_top5) +
+  plot_layout(guides = "collect", axis_titles = "collect") &  # Combine legends
+  theme(legend.position = "bottom",
+        legend.text = element_text(size = 10),
+  plot.tag = element_text(size = 20, face = "bold")) & # Position the legend at the bottom
+  ylim(0.6, 1)
+
+combined_plot_pp_is <- combined_plot_pp_is +
+  plot_annotation(tag_levels = "A")
+
+ggsave("../Plots/03_predictive_performance/pp_is_plots_sparse.png", combined_plot_pp_is, width = 12, height = 5)
+```
+
+# Out-Of Sample
+
+### Top 5%
+
+```{r}
+t1 <- Sys.time()
+pp_oos_parallel(edgelists = edgelists,
+               m = c(100, 200, 400, 800, 1600, 3200, 6400), 
+               parameters,
+               covar,
+               results_folder = "../Results/",
+               output_folder = "../Results/05b_predictive_performance_oos/01_top5/",
+               statistics_folder = "../Results/06_statistics/",
+               num_cores = 100,
+               quantile = 0.95,
+               new = 1000)
+t2 <- Sys.time()
+```
+
+### Top 10%
+
+```{r}
+t1 <- Sys.time()
+pp_oos_parallel(edgelists = edgelists,
+               m = c(100, 200, 400, 800, 1600, 3200, 6400), 
+               parameters,
+               covar,
+               results_folder = "../Results/",
+               output_folder = "../Results/05b_predictive_performance_oos/02_top10/",
+               statistics_folder = "../Results/06_statistics/",
+               num_cores = 80,
+               quantile = 0.90,
+               new = 1000)
+t2 <- Sys.time()
+```
+
+### Top 20%
+
+```{r}
+t1 <- Sys.time()
+pp_oos_parallel(edgelists = edgelists,
+               m = c(100, 200, 400, 800, 1600, 3200, 6400), 
+               parameters,
+               covar,
+               results_folder = "../Results/",
+               output_folder = "../Results/05b_predictive_performance_oos/03_top20/",
+               statistics_folder = "../Results/06_statistics/",
+               num_cores = 80,
+               quantile = 0.80,
+               new = 1000)
+t2 <- Sys.time()
+```
+
+## Plots
+
+```{r}
+plot_top5 <- plot_pp(pp_folder = "../Results/05b_predictive_performance_oos/01_top5/",
+        m = c(100, 200, 400, 800, 1600, 3200, 6400),
+        num_edgelists = 100,
+        title = "Top 5%")
+
+plot_top10 <- plot_pp(pp_folder = "../Results/05b_predictive_performance_oos/02_top10/",
+        m = c(100, 200, 400, 800, 1600, 3200, 6400),
+        num_edgelists = 100,
+        title = "Top 10%")
+
+plot_top20 <- plot_pp(pp_folder = "../Results/05b_predictive_performance_oos/03_top20/",
+        m = c(100, 200, 400, 800, 1600, 3200, 6400),
+        num_edgelists = 100,
+        title = "Top 20%")
+```
+
+```{r}
+# Combine the plots and collect axis titles and legends
+combined_plot_pp_oos <- (plot_top20 + plot_top10 + plot_top5) +
+  plot_layout(guides = "collect", axis_titles = "collect") &  # Combine legends
+  theme(legend.position = "bottom",
+        legend.text = element_text(size = 10),
+  plot.tag = element_text(size = 20, face = "bold")) & # Position the legend at the bottom
+  ylim(0.7, 1)
+
+combined_plot_pp_oos <- combined_plot_pp_oos +
+  plot_annotation(tag_levels = "A")
+
+ggsave("../Plots/03_predictive_performance/pp_oos_plots.png", combined_plot_pp_oos, width = 12, height = 5)
+```
+
+## Sparse Models
+
+### Top 5%
+
+```{r}
+t1 <- Sys.time()
+pp_oos_sparse_parallel(edgelists = edgelists,
+               m = c(100, 200, 400, 800, 1600, 3200, 6400), 
+               parameters,
+               covar,
+               results_folder = "../Results/",
+               output_folder = "../Results/05b_predictive_performance_oos/04_top5_sparse/",
+               statistics_folder = "../Results/06_statistics/",
+               selected_folder = "../Results/03_selected_variables/",
+               num_cores = 100,
+               quantile = 0.95,
+               new = 1000)
+t2 <- Sys.time()
+```
+
+### Top 10%
+
+```{r}
+t1 <- Sys.time()
+pp_oos_sparse_parallel(edgelists = edgelists,
+               m = c(100, 200, 400, 800, 1600, 3200, 6400), 
+               parameters,
+               covar,
+               results_folder = "../Results/",
+               output_folder = "../Results/05b_predictive_performance_oos/05_top10_sparse/",
+               statistics_folder = "../Results/06_statistics/",
+               selected_folder = "../Results/03_selected_variables/",
+               num_cores = 100,
+               quantile = 0.90,
+               new = 1000)
+t2 <- Sys.time()
+```
+
+### Top 20%
+
+```{r}
+t1 <- Sys.time()
+pp_oos_sparse_parallel(edgelists = edgelists,
+               m = c(100, 200, 400, 800, 1600, 3200, 6400), 
+               parameters,
+               covar,
+               results_folder = "../Results/",
+               output_folder = "../Results/05b_predictive_performance_oos/06_top20_sparse/",
+               statistics_folder = "../Results/06_statistics/",
+               selected_folder = "../Results/03_selected_variables/",
+               num_cores = 100,
+               quantile = 0.80,
+               new = 1000)
+t2 <- Sys.time()
+```
+
+## Plots
+
+```{r}
+plot_top5 <- plot_pp_sparse(pp_folder = "../Results/05b_predictive_performance_oos/04_top5_sparse/",
+        m = c(100, 200, 400, 800, 1600, 3200, 6400),
+        num_edgelists = 100,
+        title = "Top 5%")
+
+plot_top10 <- plot_pp_sparse(pp_folder = "../Results/05b_predictive_performance_oos/05_top10_sparse/",
+        m = c(100, 200, 400, 800, 1600, 3200, 6400),
+        num_edgelists = 100,
+        title = "Top 10%")
+
+plot_top20 <- plot_pp_sparse(pp_folder = "../Results/05b_predictive_performance_oos/06_top20_sparse/",
+        m = c(100, 200, 400, 800, 1600, 3200, 6400),
+        num_edgelists = 100,
+        title = "Top 20%")
+```
+
+```{r}
+# Combine the plots and collect axis titles and legends
+combined_plot_pp_oos <- (plot_top20 + plot_top10 + plot_top5) +
+  plot_layout(guides = "collect", axis_titles = "collect") &  # Combine legends
+  theme(legend.position = "bottom",
+        legend.text = element_text(size = 10),
+  plot.tag = element_text(size = 20, face = "bold")) & # Position the legend at the bottom
+  ylim(0.7, 1)
+
+combined_plot_pp_oos <- combined_plot_pp_oos +
+  plot_annotation(tag_levels = "A")
+
+ggsave("../Plots/03_predictive_performance/pp_oos_plots_sparse.png", combined_plot_pp_oos, width = 12, height = 5)
+```
+
+
+# Tables
+
+## Full Models
+
+```{r}
+table_is_full <- table_pp(pp_folder = "../Results/05a_predictive_performance_is/",
+         subfolders = c("01_top5", "02_top10", "03_top20"),
+         m = c(100, 200, 400, 800, 1600, 3200, 6400),
+         num_edgelists = 100)$latex
+
+table_oos_full <- table_pp(pp_folder = "../Results/05b_predictive_performance_oos/",
+         subfolders = c("01_top5", "02_top10", "03_top20"),
+         m = c(100, 200, 400, 800, 1600, 3200, 6400),
+         num_edgelists = 100)$latex
+```
+
+## Sparse Models
+
+```{r}
+table_is_sparse <- table_pp_sparse(pp_folder = "../Results/05a_predictive_performance_is/",
+         subfolders = c("04_top5_sparse", "05_top10_sparse", "06_top20_sparse"),
+         m = c(100, 200, 400, 800, 1600, 3200, 6400),
+         num_edgelists = 100)$latex
+
+table_oos_sparse <- table_pp_sparse(pp_folder = "../Results/05b_predictive_performance_oos/",
+         subfolders = c("04_top5_sparse", "05_top10_sparse", "06_top20_sparse"),
+         m = c(100, 200, 400, 800, 1600, 3200, 6400),
+         num_edgelists = 100)$latex
+```
+
+
