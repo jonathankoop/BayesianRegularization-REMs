@@ -370,14 +370,14 @@ estimate_edgelists_parallel <- function(edgelists,
         edgelist_index = task$edgelist_index,
         m = task$m_val,
         mle_coefs = coefs,
-        shrink_hs = shrinkem(estimates, cov, type = "horseshoe"),
-        shrink_ridge = shrinkem(estimates, cov, type = "ridge")
+        shrink_hs = shrinkem(estimates, cov, type = "horseshoe")$estimates,
+        shrink_ridge = shrinkem(estimates, cov, type = "ridge")$estimates
       )
       
       # Save estimates in separate files
       path <- paste0(
         folder,
-        "01_estimates/estimates_m_",
+        "01a_estimates_dependent/estimates_m_",
         task$m_val,
         "_edgelist_",
         task$edgelist_index,
@@ -389,7 +389,7 @@ estimate_edgelists_parallel <- function(edgelists,
       dir.create("errors", showWarnings = FALSE)
       err_path <- paste0(
         folder,
-        "02_errors/error_m_",
+        "06_errors/error_m_",
         task$m_val,
         "_edgelist_",
         task$edgelist_index,
@@ -471,7 +471,7 @@ estimate_edgelists_parallel_extra <- function(edgelists,
       # Save estimates in separate files
       path <- paste0(
         folder,
-        "01_estimates/estimates_m_",
+        "01a_estimates_dependent/estimates_m_",
         task$m_val,
         "_edgelist_",
         task$edgelist_index,
@@ -483,7 +483,7 @@ estimate_edgelists_parallel_extra <- function(edgelists,
       dir.create("errors", showWarnings = FALSE)
       err_path <- paste0(
         folder,
-        "02_errors/error_m_",
+        "06_errors/error_m_",
         task$m_val,
         "_edgelist_",
         task$edgelist_index,
@@ -574,7 +574,7 @@ estimate_edgelists_independent <- function(parameters,
       dir.create("errors", showWarnings = FALSE)
       err_path <- paste0(
         folder,
-        "02_errors/error_independent_m_",
+        "06_errors/error_independent_m_",
         task$m_val,
         "_edgelist_",
         task$edgelist_index,
@@ -652,107 +652,6 @@ poisson_df <- function(events, tie_stats, tie_reh, t0 = 0) {
 
 # Estimating brms Models
 
-## Horseshoe
-
-
-estimate_brms_hs_parallel <- function(edgelists,
-                                      parameters,
-                                      covar,
-                                      folder,
-                                      num_cores,
-                                      task_list,
-                                      seed = 123) {
-  # Set up parallel backend
-  future::plan(future::multisession, workers = floor(num_cores / 4))
-  set.seed(seed)
-  
-  # Precompute shared formula
-  effects <- generate_formula(parameters)
-  
-  # Run tasks in parallel
-  future_lapply(task_list, function(task) {
-    tryCatch({
-      # Remify the edgelist
-      reh <- remify(
-        edgelist = task$edgelist,
-        directed = TRUE,
-        model = "tie"
-      )
-      
-      # Compute statistics
-      statistics <- remstats(reh = reh,
-                             tie_effects = effects,
-                             attr_actors = covar)
-      
-      # Transform data frame
-      df_poisson <- poisson_df(task$edgelist,
-                               tie_stats = statistics,
-                               tie_reh = reh)
-      
-      
-      # Create Formula
-      predictors <- names(df_poisson)[1:(which(colnames(df_poisson) == "y") - 1)]
-      glm_formula <- as.formula(paste("y ~", paste(
-        c(predictors, "offset(logDelta)"), collapse = " + "
-      )))
-      
-      # Remove statistics (for memory)
-      rm(statistics)
-      
-      # Estimate the model using brm
-      model <- brm(
-        formula = glm_formula,
-        data = df_poisson,
-        family = poisson(link = "log"),
-        prior = set_prior(
-          horseshoe(
-            df = 3,
-            scale_global = 1,
-            df_global = 3,
-            scale_slab = 2,
-            df_slab = 4,
-            par_ratio = NULL,
-            autoscale = TRUE
-          ),
-          class = "b"
-        ),
-        backend = "cmdstanr",
-        cores = 4
-      )
-      
-      
-      # Save estimates in separate files
-      path <- paste0(
-        folder,
-        "01b_estimates_brms/estimates_brms_hs_m_",
-        task$m_val,
-        "_edgelist_",
-        task$edgelist_index,
-        ".RData"
-      )
-      save(model, file = path)
-      
-      fls <- list.files(tempdir(), full.names = T)
-      file.remove(fls)
-      
-    }, error = function(e) {
-      dir.create("errors", showWarnings = FALSE)
-      err_path <- paste0(
-        folder,
-        "02b_errors_brms/error_brms_hs_m_",
-        task$m_val,
-        "_edgelist_",
-        task$edgelist_index,
-        ".RData"
-      )
-      save(e, file = err_path)
-      list(edgelist_index = task$edgelist_index,
-           m = task$m_val)
-    })
-  }, future.seed = TRUE)
-  
-}
-
 
 ## Horseshoe
 
@@ -822,17 +721,19 @@ estimate_brms_hs_parallel <- function(edgelists,
         cores = 4
       )
       
+      coefs_ebr_hs <- bayestestR::describe_posterior(model, centrality = "all")
+      
       
       # Save estimates in separate files
       path <- paste0(
         folder,
-        "01b_estimates_brms/estimates_brms_hs_m_",
+        "01b_estimates_ebr/estimates_brms_hs_m_",
         task$m_val,
         "_edgelist_",
         task$edgelist_index,
         ".RData"
       )
-      save(model, file = path)
+      save(coefs_ebr_hs, file = path)
       
       fls <- list.files(tempdir(), full.names = T)
       file.remove(fls)
@@ -924,16 +825,18 @@ estimate_brms_parallel_extra <- function(edgelists,
         cores = 4
       )
       
+      coefs_ebr_hs <- bayestestR::describe_posterior(model, centrality = "all")
+      
       # Save the model estimates into a designated file
       estimates_path <- paste0(
         folder,
-        "01b_estimates_brms/estimates_brms_hs_m_",
+        "01b_estimates_ebr/estimates_brms_hs_m_",
         task$m_val,
         "_edgelist_",
         task$edgelist_index,
         ".RData"
       )
-      save(model, file = estimates_path)
+      save(coefs_ebr_hs, file = estimates_path)
       
       # Clean up temporary files
       fls <- list.files(tempdir(), full.names = TRUE)
@@ -984,7 +887,7 @@ select_variables_parallel <- function(m, n_edgelists, folder, num_cores) {
       load(
         paste0(
           folder,
-          "01_estimates/estimates_m_",
+          "01a_estimates_dependent/estimates_m_",
           task$m_val,
           "_edgelist_",
           task$edgelist_index,
@@ -996,36 +899,36 @@ select_variables_parallel <- function(m, n_edgelists, folder, num_cores) {
       mle_05 <- rownames(output[["mle_coefs"]][output[["mle_coefs"]][, 4] < 0.05, ])
       
       # Selected variables from ABR with Horseshoe
-      abr_hs_95 <- rownames(output[["shrink_hs"]]$estimates[output[["shrink_hs"]]$estimates$nonzero == 1, ])
-      abr_hs_mode_01 <- rownames(output[["shrink_hs"]]$estimates[abs(output[["shrink_hs"]]$estimates$shrunk.mode) >= 0.1, ])
-      abr_hs_median_01 <- rownames(output[["shrink_hs"]]$estimates[abs(output[["shrink_hs"]]$estimates$shrunk.median) >= 0.1, ])
-      abr_hs_mean_01 <- rownames(output[["shrink_hs"]]$estimates[abs(output[["shrink_hs"]]$estimates$shrunk.mean) >= 0.1, ])
+      abr_hs_95 <- rownames(output[["shrink_hs"]][output[["shrink_hs"]]$nonzero == 1, ])
+      abr_hs_mode_01 <- rownames(output[["shrink_hs"]][abs(output[["shrink_hs"]]$shrunk.mode) >= 0.1, ])
+      abr_hs_median_01 <- rownames(output[["shrink_hs"]][abs(output[["shrink_hs"]]$shrunk.median) >= 0.1, ])
+      abr_hs_mean_01 <- rownames(output[["shrink_hs"]][abs(output[["shrink_hs"]]$shrunk.mean) >= 0.1, ])
       
       # Selected variables from ABR with Ridge
-      abr_ridge_95 <- rownames(output[["shrink_ridge"]]$estimates[output[["shrink_ridge"]]$estimates$nonzero == 1, ])
-      abr_ridge_mode_01 <- rownames(output[["shrink_ridge"]]$estimates[abs(output[["shrink_ridge"]]$estimates$shrunk.mode) >= 0.1, ])
-      abr_ridge_median_01 <- rownames(output[["shrink_ridge"]]$estimates[abs(output[["shrink_ridge"]]$estimates$shrunk.median) >= 0.1, ])
-      abr_ridge_mean_01 <- rownames(output[["shrink_ridge"]]$estimates[abs(output[["shrink_ridge"]]$estimates$shrunk.mean) >= 0.1, ])
+      abr_ridge_95 <- rownames(output[["shrink_ridge"]][output[["shrink_ridge"]]$nonzero == 1, ])
+      abr_ridge_mode_01 <- rownames(output[["shrink_ridge"]][abs(output[["shrink_ridge"]]$shrunk.mode) >= 0.1, ])
+      abr_ridge_median_01 <- rownames(output[["shrink_ridge"]][abs(output[["shrink_ridge"]]$shrunk.median) >= 0.1, ])
+      abr_ridge_mean_01 <- rownames(output[["shrink_ridge"]][abs(output[["shrink_ridge"]]$shrunk.mean) >= 0.1, ])
       
       # Selected variables from EBR with Horseshoe only for m = 100 and 200
       if (task$m_val %in% c(100, 200)) {
         load(
           paste0(
             folder,
-            "01b_estimates_brms/estimates_brms_hs_m_",
+            "01b_estimates_ebr/estimates_brms_hs_m_",
             task$m_val,
             "_edgelist_",
             task$edgelist_index,
             ".RData"
           )
         )
-        coefs_hs <- bayestestR::describe_posterior(model, centrality = "all")
-        coefs_hs$Parameter <- sub("1$", "", sub("^b_", "", coefs_hs$Parameter))
-        ebr_hs_95 <- coefs_hs[!(coefs_hs$CI_low < 0 &
-                                  coefs_hs$CI_high > 0), ]$Parameter
-        ebr_hs_mode_01 <- coefs_hs[abs(coefs_hs$MAP) >= 0.1, ]$Parameter
-        ebr_hs_median_01 <- coefs_hs[abs(coefs_hs$Median) >= 0.1, ]$Parameter
-        ebr_hs_mean_01 <- coefs_hs[abs(coefs_hs$Mean) >= 0.1, ]$Parameter
+
+        coefs_ebr_hs$Parameter <- sub("1$", "", sub("^b_", "", coefs_ebr_hs$Parameter))
+        ebr_hs_95 <- coefs_ebr_hs[!(coefs_ebr_hs$CI_low < 0 &
+                                  coefs_ebr_hs$CI_high > 0), ]$Parameter
+        ebr_hs_mode_01 <- coefs_ebr_hs[abs(coefs_ebr_hs$MAP) >= 0.1, ]$Parameter
+        ebr_hs_median_01 <- coefs_ebr_hs[abs(coefs_ebr_hs$Median) >= 0.1, ]$Parameter
+        ebr_hs_mean_01 <- coefs_ebr_hs[abs(coefs_ebr_hs$Mean) >= 0.1, ]$Parameter
       } else {
         ebr_hs_95 <- character(0)
         ebr_hs_mode_01 <- character(0)
@@ -1069,7 +972,7 @@ select_variables_parallel <- function(m, n_edgelists, folder, num_cores) {
       dir.create("errors", showWarnings = FALSE)
       err_path <- paste0(
         folder,
-        "02_errors/selection_error_m_",
+        "06_errors/selection_error_m_",
         task$m_val,
         "_edgelist_",
         task$edgelist_index,
@@ -1111,24 +1014,23 @@ select_variables_brms_parallel <- function(m, n_edgelists, folder, num_cores) {
       load(
         paste0(
           folder,
-          "01b_estimates_brms/estimates_brms_hs_m_",
+          "01b_estimates_ebr/estimates_brms_hs_m_",
           task$m_val,
           "_edgelist_",
           task$edgelist_index,
           ".RData"
         )
       )
-      
-      coefs <- bayestestR::describe_posterior(model, centrality = "all")
-      coefs$Parameter <- sub("1$", "", sub("^b_", "", coefs$Parameter))
+
+      coefs_ebr_hs$Parameter <- sub("1$", "", sub("^b_", "", coefs_ebr_hs$Parameter))
       
       
       # Selected variables
-      hs_95 <- coefs[!(coefs$CI_low < 0 &
-                         coefs$CI_high > 0), ]$Parameter
-      hs_map_01 <- coefs[abs(coefs$MAP) >= 0.1, ]$Parameter
-      hs_median_01 <- coefs[abs(coefs$Median) >= 0.1, ]$Parameter
-      hs_mean_01 <- coefs[abs(coefs$Mean) >= 0.1, ]$Parameter
+      hs_95 <- coefs_ebr_hs[!(coefs_ebr_hs$CI_low < 0 &
+                         coefs_ebr_hs$CI_high > 0), ]$Parameter
+      hs_map_01 <- coefs_ebr_hs[abs(coefs_ebr_hs$MAP) >= 0.1, ]$Parameter
+      hs_median_01 <- coefs_ebr_hs[abs(coefs_ebr_hs$Median) >= 0.1, ]$Parameter
+      hs_mean_01 <- coefs_ebr_hs[abs(coefs_ebr_hs$Mean) >= 0.1, ]$Parameter
       
       selected_vars <- list(
         edgelist_index = task$edgelist_index,
@@ -1205,16 +1107,16 @@ select_variables_independent_parallel <- function(m, n_edgelists, folder, num_co
       mle_05 <- rownames(output[["mle_coefs"]][output[["mle_coefs"]][, 4] < 0.05, ])
       
       # Selected variables from ABR with Horseshoe
-      abr_hs_95 <- rownames(output[["shrink_hs"]]$estimates[output[["shrink_hs"]]$estimates$nonzero == 1, ])
-      abr_hs_mode_01 <- rownames(output[["shrink_hs"]]$estimates[abs(output[["shrink_hs"]]$estimates$shrunk.mode) >= 0.1, ])
-      abr_hs_median_01 <- rownames(output[["shrink_hs"]]$estimates[abs(output[["shrink_hs"]]$estimates$shrunk.median) >= 0.1, ])
-      abr_hs_mean_01 <- rownames(output[["shrink_hs"]]$estimates[abs(output[["shrink_hs"]]$estimates$shrunk.mean) >= 0.1, ])
+      abr_hs_95 <- rownames(output[["shrink_hs"]][output[["shrink_hs"]]$nonzero == 1, ])
+      abr_hs_mode_01 <- rownames(output[["shrink_hs"]][abs(output[["shrink_hs"]]$shrunk.mode) >= 0.1, ])
+      abr_hs_median_01 <- rownames(output[["shrink_hs"]][abs(output[["shrink_hs"]]$shrunk.median) >= 0.1, ])
+      abr_hs_mean_01 <- rownames(output[["shrink_hs"]][abs(output[["shrink_hs"]]$shrunk.mean) >= 0.1, ])
       
       # Selected variables from ABR with Ridge
-      abr_ridge_95 <- rownames(output[["shrink_ridge"]]$estimates[output[["shrink_ridge"]]$estimates$nonzero == 1, ])
-      abr_ridge_mode_01 <- rownames(output[["shrink_ridge"]]$estimates[abs(output[["shrink_ridge"]]$estimates$shrunk.mode) >= 0.1, ])
-      abr_ridge_median_01 <- rownames(output[["shrink_ridge"]]$estimates[abs(output[["shrink_ridge"]]$estimates$shrunk.median) >= 0.1, ])
-      abr_ridge_mean_01 <- rownames(output[["shrink_ridge"]]$estimates[abs(output[["shrink_ridge"]]$estimates$shrunk.mean) >= 0.1, ])
+      abr_ridge_95 <- rownames(output[["shrink_ridge"]][output[["shrink_ridge"]]$nonzero == 1, ])
+      abr_ridge_mode_01 <- rownames(output[["shrink_ridge"]][abs(output[["shrink_ridge"]]$shrunk.mode) >= 0.1, ])
+      abr_ridge_median_01 <- rownames(output[["shrink_ridge"]][abs(output[["shrink_ridge"]]$shrunk.median) >= 0.1, ])
+      abr_ridge_mean_01 <- rownames(output[["shrink_ridge"]][abs(output[["shrink_ridge"]]$shrunk.mean) >= 0.1, ])
       
       selected_vars <- list(
         edgelist_index = task$edgelist_index,
@@ -1247,7 +1149,7 @@ select_variables_independent_parallel <- function(m, n_edgelists, folder, num_co
       dir.create("errors", showWarnings = FALSE)
       err_path <- paste0(
         folder,
-        "02_errors/selection_error_independent_m_",
+        "06_errors/selection_error_independent_m_",
         task$m_val,
         "_edgelist_",
         task$edgelist_index,
@@ -1288,7 +1190,7 @@ extract_estimates <- function(m, n_edgelists, results_folder, num_cores) {
       load(
         paste0(
           results_folder,
-          "01_estimates/estimates_m_",
+          "01a_estimates_dependent/estimates_m_",
           task$m_val,
           "_edgelist_",
           task$edgelist_index,
@@ -1311,21 +1213,21 @@ extract_estimates <- function(m, n_edgelists, results_folder, num_cores) {
       
       df$coef <- names(output[["mle_coefs"]][, 1])
       df$mle <- output[["mle_coefs"]][, 1]
-      df$abr_hs <- output[["shrink_hs"]]$estimates$shrunk.mode
-      df$abr_ridge <- output[["shrink_ridge"]]$estimates$shrunk.mode
+      df$abr_hs <- output[["shrink_hs"]]$shrunk.mode
+      df$abr_ridge <- output[["shrink_ridge"]]$shrunk.mode
       
       if (task$m_val %in% c(100, 200)) {
         load(
           paste0(
             results_folder,
-            "01b_estimates_brms/estimates_brms_hs_m_",
+            "01b_estimates_ebr/estimates_brms_hs_m_",
             task$m_val,
             "_edgelist_",
             task$edgelist_index,
             ".RData"
           )
         )
-        coefs_ebr_hs <- bayestestR::describe_posterior(model, centrality = "all")
+        
         df$ebr_hs <- coefs_ebr_hs$MAP
       } else {
         df$ebr_hs <- NA
@@ -1382,8 +1284,8 @@ extract_estimates_independent <- function(m, n_edgelists, results_folder, num_co
       
       df$coef <- names(output[["mle_coefs"]][, 1])
       df$mle <- output[["mle_coefs"]][, 1]
-      df$abr_hs <- output[["shrink_hs"]]$estimates$shrunk.mode
-      df$abr_ridge <- output[["shrink_ridge"]]$estimates$shrunk.mode
+      df$abr_hs <- output[["shrink_hs"]]$shrunk.mode
+      df$abr_ridge <- output[["shrink_ridge"]]$shrunk.mode
       
       
       return(df)
@@ -2371,7 +2273,7 @@ pp_is_parallel <- function(edgelists,
       load(
         paste0(
           results_folder,
-          "01_estimates/estimates_m_",
+          "01a_estimates_dependent/estimates_m_",
           task$m_val,
           "_edgelist_",
           task$edgelist_index,
@@ -2420,14 +2322,13 @@ pp_is_parallel <- function(edgelists,
         load(
           paste0(
             results_folder,
-            "01b_estimates_brms/estimates_brms_hs_m_",
+            "01b_estimates_ebr/estimates_brms_hs_m_",
             task$m_val,
             "_edgelist_",
             task$edgelist_index,
             ".RData"
           )
         )
-        coefs_ebr_hs <- bayestestR::describe_posterior(model, centrality = "all")
         
         ebr_hs_pp <- predictive_performance_all(
           edgelist = edgelists[[task$edgelist_index]][1:task$m_val, ],
@@ -2463,7 +2364,7 @@ pp_is_parallel <- function(edgelists,
       
     }, error = function(e) {
       err_path <- paste0(
-        "../Results/02_errors/pp_error_m_",
+        "../Results/06_errors/pp_error_m_",
         task$m_val,
         "_edgelist_",
         task$edgelist_index,
@@ -2520,7 +2421,7 @@ pp_is_sparse_parallel <- function(edgelists,
       load(
         paste0(
           results_folder,
-          "01_estimates/estimates_m_",
+          "01a_estimates_dependent/estimates_m_",
           task$m_val,
           "_edgelist_",
           task$edgelist_index,
@@ -2662,14 +2563,14 @@ pp_is_sparse_parallel <- function(edgelists,
         load(
           paste0(
             results_folder,
-            "01b_estimates_brms/estimates_brms_hs_m_",
+            "01b_estimates_ebr/estimates_brms_hs_m_",
             task$m_val,
             "_edgelist_",
             task$edgelist_index,
             ".RData"
           )
         )
-        coefs_ebr_hs <- bayestestR::describe_posterior(model, centrality = "all")
+
         coefs_ebr_hs$Parameter <- sub("1$", "", sub("^b_", "", coefs_ebr_hs$Parameter))
         
         ebr_hs_95_pp <- predictive_performance_all(
@@ -2767,7 +2668,7 @@ pp_is_sparse_parallel <- function(edgelists,
       
     }, error = function(e) {
       err_path <- paste0(
-        "../Results/02_errors/pp_sparse_error_m_",
+        "../Results/06_errors/pp_sparse_error_m_",
         task$m_val,
         "_edgelist_",
         task$edgelist_index,
@@ -2888,7 +2789,7 @@ pp_is_independent_parallel <- function(parameters,
       
     }, error = function(e) {
       err_path <- paste0(
-        "../Results/02_errors/pp_independent_error_m_",
+        "../Results/06_errors/pp_independent_error_m_",
         task$m_val,
         "_edgelist_",
         task$edgelist_index,
@@ -3092,7 +2993,7 @@ pp_is_independent_sparse_parallel <- function(parameters,
       
     }, error = function(e) {
       err_path <- paste0(
-        "../Results/02_errors/pp_independent_sparse_error_m_",
+        "../Results/06_errors/pp_independent_sparse_error_m_",
         task$m_val,
         "_edgelist_",
         task$edgelist_index,
@@ -3154,7 +3055,7 @@ pp_oos_parallel <- function(edgelists,
       load(
         paste0(
           results_folder,
-          "01_estimates/estimates_m_",
+          "01a_estimates_dependent/estimates_m_",
           task$m_val,
           "_edgelist_",
           task$edgelist_index,
@@ -3207,14 +3108,14 @@ pp_oos_parallel <- function(edgelists,
         load(
           paste0(
             results_folder,
-            "01b_estimates_brms/estimates_brms_hs_m_",
+            "01b_estimates_ebr/estimates_brms_hs_m_",
             task$m_val,
             "_edgelist_",
             task$edgelist_index,
             ".RData"
           )
         )
-        coefs_ebr_hs <- bayestestR::describe_posterior(model, centrality = "all")
+
         
         ebr_hs_pp <- predictive_performance_all(
           edgelist = edgelist_oos,
@@ -3249,7 +3150,7 @@ pp_oos_parallel <- function(edgelists,
       save(pp, file = path)
     }, error = function(e) {
       err_path <- paste0(
-        "../Results/02_errors/pp_oos_error_m_",
+        "../Results/06_errors/pp_oos_error_m_",
         task$m_val,
         "_edgelist_",
         task$edgelist_index,
@@ -3305,7 +3206,7 @@ pp_oos_sparse_parallel <- function(edgelists,
       load(
         paste0(
           results_folder,
-          "01_estimates/estimates_m_",
+          "01a_estimates_dependent/estimates_m_",
           task$m_val,
           "_edgelist_",
           task$edgelist_index,
@@ -3448,14 +3349,14 @@ pp_oos_sparse_parallel <- function(edgelists,
         load(
           paste0(
             results_folder,
-            "01b_estimates_brms/estimates_brms_hs_m_",
+            "01b_estimates_ebr/estimates_brms_hs_m_",
             task$m_val,
             "_edgelist_",
             task$edgelist_index,
             ".RData"
           )
         )
-        coefs_ebr_hs <- bayestestR::describe_posterior(model, centrality = "all")
+
         coefs_ebr_hs$Parameter <- sub("1$", "", sub("^b_", "", coefs_ebr_hs$Parameter))
         
         ebr_hs_95_pp <- predictive_performance_all(
@@ -3553,7 +3454,7 @@ pp_oos_sparse_parallel <- function(edgelists,
       
     }, error = function(e) {
       err_path <- paste0(
-        "../Results/02_errors/pp_sparse_error_m_",
+        "../Results/06_errors/pp_sparse_error_m_",
         task$m_val,
         "_edgelist_",
         task$edgelist_index,
@@ -3679,7 +3580,7 @@ pp_oos_independent_parallel <- function(parameters,
       
     }, error = function(e) {
       err_path <- paste0(
-        "../Results/02_errors/pp_independent_error_m_",
+        "../Results/06_errors/pp_independent_error_m_",
         task$m_val,
         "_edgelist_",
         task$edgelist_index,
@@ -3890,7 +3791,7 @@ pp_oos_independent_sparse_parallel <- function(parameters,
       
     }, error = function(e) {
       err_path <- paste0(
-        "../Results/02_errors/pp_sparse_error_m_",
+        "../Results/06_errors/pp_sparse_error_m_",
         task$m_val,
         "_edgelist_",
         task$edgelist_index,
@@ -4905,7 +4806,7 @@ calculate_statistics_parallel <- function(edgelists,
            file = file_path)
     }, error = function(e) {
       error_file <- paste0(results_folder,
-                           "02_errors/error_statistics_edgelist_",
+                           "06_errors/error_statistics_edgelist_",
                            idx,
                            ".RData")
       save(e, file = error_file)
