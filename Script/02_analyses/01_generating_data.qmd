@@ -3,9 +3,14 @@ title: "Generating Data"
 format: html
 ---
 
+# Preparations
+
+## Source Functions
+
 ```{r}
-load("../Functions/functions.RData")
+source("../01_functions/functions.R")
 ```
+
 
 ```{r}
 library(remulate)
@@ -13,35 +18,33 @@ library(tidyverse)
 library(MASS)
 library(future)
 library(future.apply)
-library(parallel)
 ```
 
 ## Generate Exogenous Variables
 
 ```{r}
-set.seed(123)  # Ensure reproducibility
-n <- 50       # number of observations
+RNGkind("L'Ecuyer-CMRG")
+set.seed(123) # set seed for reproducibility
+n <- 50 # set number of actors
 
-# Generate continuous variables for:
-# - z1, z2, z3 (first three continuous variables)
-# - z7, z8, z9, z10, z11 (next five continuous variables)
-# Total continuous variables = 3 + 5 = 8.
+# Generate continuous variables
 mean_vec <- rep(0, 8)
-cov_matrix <- diag(8)  # identity covariance matrix (adjust if needed)
+cov_matrix <- diag(8)  # no covariance
 mv_data <- mvrnorm(n = n, mu = mean_vec, Sigma = cov_matrix)
 
-# Assign column names: first 3 as z1,z2,z3, and next 5 as z7,...,z11.
+# Name variables
 colnames(mv_data) <- c("z1", "z2", "z3", "z7", "z8", "z9", "z10", "z11")
 
-# Generate binary variables:
-# For z4, z5, z6
+# Generate dummy variables
+
+# with non-zero effect
 binary_first <- data.frame(
   z4 = sample(c(0,1), n, replace = TRUE),
   z5 = sample(c(0,1), n, replace = TRUE),
   z6 = sample(c(0,1), n, replace = TRUE)
 )
 
-# For z12 to z16
+# without effect
 binary_second <- data.frame(
   z12 = sample(c(0,1), n, replace = TRUE),
   z13 = sample(c(0,1), n, replace = TRUE),
@@ -50,8 +53,7 @@ binary_second <- data.frame(
   z16 = sample(c(0,1), n, replace = TRUE)
 )
 
-# Combine everything into a final data frame in the order:
-# name, time, z1, z2, z3, (binary z4, z5, z6), z7, z8, z9, z10, z11, (binary z12 to z16)
+# combine all variables into a data frame
 covar <- data.frame(
   name = 1:n,
   time = 0,
@@ -61,7 +63,7 @@ covar <- data.frame(
   binary_second
 )
 
-save(covar, file = "../GeneratedData/covar.RData")
+save(covar, file = "../../Data/01_simulation/covar.RData")
 ```
 
 ## Set Up Effects
@@ -127,37 +129,25 @@ effects <- ~ remulate::baseline(-8) +
 ### Dependent
 
 ```{r}
+RNGkind("Mersenne-Twister")
 for (i in 1:100) {
   set.seed(i)
   edgelist <- remulateTie(effects,
                           actors = 1:50,
                           events = 7400,
                           time = 10000)
+  
+  edgelist <- as.data.frame(lapply(edgelist, function(x) {
+      attributes(x) <- NULL
+      x
+    }))
+  
   save(edgelist,
-       file = paste0("../GeneratedData/edgelists/edgelist_", i, ".RData"))
+       file = paste0("../../Data/01_simulation/01_edgelists_dependent/edgelist_", i, ".RData"))
 }
 ```
 
 ### Independent
-
-```{r}
-m <- c(100, 200, 400, 800, 1600, 3200, 6400)
-sample_sizes <- m + 1000
-for (i in seq_along(sample_sizes)) {
-  dir.create(paste0("../GeneratedData/edgelists_independent/", m[i]))
-  generate_edgelists_independent_parallel(
-    effects = effects,
-    effect_sizes = effect_sizes,
-    covar = covar,
-    num_events = sample_sizes[i],
-    num_cores = 50,
-    start = 1,
-    end = 100,
-    folder = paste0("../GeneratedData/edgelists_independent/", m[i], "/")
-  )
-}
-```
-
 
 ```{r}
 m <- c(100, 200, 400, 800, 1600, 3200, 6400)
@@ -171,7 +161,7 @@ for (i in seq_along(sample_sizes)) {
     num_events = sample_sizes[i],
     num_cores = 10,
     start = 1,
-    end = 10,
+    end = 100,
     folder = paste0("../GeneratedData/edgelists_independent/", m[i], "/")
   )
 }
