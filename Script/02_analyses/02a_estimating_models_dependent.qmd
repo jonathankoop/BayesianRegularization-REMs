@@ -282,6 +282,11 @@ bias_all <- bind_rows(
   )
 ```
 
+```{r}
+save(bias_all, file= "../../Output/03_tables/table_bias_dependent.tex")
+```
+
+
 
 # Plot Estimates
 
@@ -302,7 +307,7 @@ for (i in seq_along(m_plots)) {
 plots_mle_combined <- wrap_plots(plots_mle, ncol = 2, guides = "collect") &
   theme(legend.position = "bottom")
 
-ggsave("../Plots/01_coefficient_plots/plots_mle.png", plots_mle_combined,
+ggsave("../../Output/02_plots/01_coefficient_plots/plots_mle.png", plots_mle_combined,
        width = 10, height = 15)
 ```
 
@@ -317,7 +322,7 @@ for (i in seq_along(m_plots)) {
 plots_abr_hs_combined <- wrap_plots(plots_abr_hs, ncol = 2, guides = "collect") &
   theme(legend.position = "bottom")
 
-ggsave("../Plots/01_coefficient_plots/plots_abr_hs.png", plots_abr_hs_combined,
+ggsave("../../Output/02_plots/01_coefficient_plots/plots_abr_hs.png", plots_abr_hs_combined,
        width = 10, height = 15)
 ```
 
@@ -332,7 +337,7 @@ for (i in seq_along(m_plots)) {
 plots_abr_ridge_combined <- wrap_plots(plots_abr_ridge, ncol = 2, guides = "collect") &
   theme(legend.position = "bottom")
 
-ggsave("../Plots/01_coefficient_plots/plots_abr_ridge.png", plots_abr_ridge_combined,
+ggsave("../../Output/02_plots/01_coefficient_plots/plots_abr_ridge.png", plots_abr_ridge_combined,
        width = 10, height = 15)
 
 ```
