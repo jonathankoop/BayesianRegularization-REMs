@@ -20,22 +20,22 @@ library(kableExtra)
 
 ```{r}
 source("../01_functions/functions.R")
-load("../GeneratedData/covar.RData")
-load("../GeneratedData/parameters.RData")
+load("../../Data/01_simulation/covar.RData")
+load("../../Data/01_simulation/parameters.RData")
 ```
 
 # Load and Combine edgelists
 
 ```{r}
 edgelists <- list()
-files <- list.files("../GeneratedData/edgelists")
+files <- list.files("../../Data/01_simulation/01_edgelists_dependent")
 
 # subset files with edgelist_
 files <- files[grep("edgelist_", files)]
 
 
 for (i in seq_along(files)) {
-  load(paste0("../GeneratedData/edgelists/", files[i]))
+  load(paste0("../../Data/01_simulation/01_edgelists_dependent/", files[i]))
   
   edgelists[[i]] <- edgelist
 }

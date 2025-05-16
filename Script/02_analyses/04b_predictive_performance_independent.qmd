@@ -22,9 +22,10 @@ library(kableExtra)
 
 ```{r}
 source("../01_functions/functions.R")
-load("../GeneratedData/covar.RData")
-load("../GeneratedData/parameters.RData")
+load("../../Data/01_simulation/covar.RData")
+load("../../Data/01_simulation/parameters.RData")
 ```
+
 
 
 
@@ -39,7 +40,7 @@ expected_edges <- 1:100
 
 # List all files in the directory that match the naming pattern
 files <- list.files(
-  "../Results/01c_estimates_independent",
+  "../../Output/01_result_files/01c_estimates_independent",
   pattern = "estimates_m_.*_edgelist_.*\\.RData"
 )
 
@@ -72,7 +73,7 @@ task_list <- lapply(m_values, function(m_val) {
       edgelist       = get(
                          load(
                            paste0(
-                             "../GeneratedData/edgelists_independent/",
+                             "../../Data/01_simulation/02_edgelists_independent/",
                              m_val, "/edgelist_", edgelist_index, ".RData"
                            )
                          )
@@ -91,8 +92,8 @@ task_list <- unlist(task_list, recursive = FALSE)
 t1 <- Sys.time()
 pp_is_independent_parallel(parameters,
                covar,
-               results_folder = "../Results/",
-               output_folder = "../Results/05c_predictive_performance_is_independent/01_top5/",
+               results_folder = "../../Output/01_result_files/",
+               output_folder = "../../Output/01_result_files/04c_predictive_performance_is_independent/01_top5/",
                task_list = task_list,
                num_cores = 40,
                quantile = 0.95)
@@ -105,8 +106,8 @@ t2 <- Sys.time()
 t1 <- Sys.time()
 pp_is_independent_parallel(parameters,
                covar,
-               results_folder = "../Results/",
-               output_folder = "../Results/05c_predictive_performance_is_independent/02_top10/",
+               results_folder = "../../Output/01_result_files/",
+               output_folder = "../../Output/01_result_files/04c_predictive_performance_is_independent/02_top10/",
                task_list = task_list,
                num_cores = 40,
                quantile = 0.90)
@@ -119,8 +120,8 @@ t2 <- Sys.time()
 t1 <- Sys.time()
 pp_is_independent_parallel(parameters,
                covar,
-               results_folder = "../Results/",
-               output_folder = "../Results/05c_predictive_performance_is_independent/03_top20/",
+               results_folder = "../../Output/01_result_files/",
+               output_folder = "../../Output/01_result_files/04c_predictive_performance_is_independent/03_top20/",
                task_list = task_list,
                num_cores = 40,
                quantile = 0.80)
@@ -130,17 +131,17 @@ t2 <- Sys.time()
 ## Plots
 
 ```{r}
-plot_top5 <- plot_pp(pp_folder = "../Results/05c_predictive_performance_is_independent/01_top5/",
+plot_top5 <- plot_pp(pp_folder = "../../Output/01_result_files/04c_predictive_performance_is_independent/01_top5/",
         m = c(100, 200, 400, 800, 1600, 3200, 6400),
         num_edgelists = 100,
         title = "Top 5%")
 
-plot_top10 <- plot_pp(pp_folder = "../Results/05c_predictive_performance_is_independent/02_top10/",
+plot_top10 <- plot_pp(pp_folder = "../../Output/01_result_files/04c_predictive_performance_is_independent/02_top10/",
         m = c(100, 200, 400, 800, 1600, 3200, 6400),
         num_edgelists = 100,
         title = "Top 10%")
 
-plot_top20 <- plot_pp(pp_folder = "../Results/05c_predictive_performance_is_independent/03_top20/",
+plot_top20 <- plot_pp(pp_folder = "../../Output/01_result_files/04c_predictive_performance_is_independent/03_top20/",
         m = c(100, 200, 400, 800, 1600, 3200, 6400),
         num_edgelists = 100,
         title = "Top 20%")
@@ -158,7 +159,7 @@ combined_plot_pp_is <- (plot_top20 + plot_top10 + plot_top5) +
 combined_plot_pp_is <- combined_plot_pp_is +
   plot_annotation(tag_levels = "A")
 
-ggsave("../Plots/03_predictive_performance/pp_is_plots_independent.png", combined_plot_pp_is, width = 12, height = 5)
+ggsave("../../Output/02_plots/03_predictive_performance/pp_is_plots_independent.png", combined_plot_pp_is, width = 12, height = 5)
 ```
 
 ## Sparse Models
@@ -169,9 +170,9 @@ ggsave("../Plots/03_predictive_performance/pp_is_plots_independent.png", combine
 t1 <- Sys.time()
 pp_is_independent_sparse_parallel(parameters,
                covar,
-               results_folder = "../Results/",
-               output_folder = "../Results/05c_predictive_performance_is_independent/04_top5_sparse/",
-               selected_folder = "../Results/03b_selected_variables_independent/",
+               results_folder = "../../Output/01_result_files/",
+               output_folder = "../../Output/01_result_files/04c_predictive_performance_is_independent/04_top5_sparse/",
+               selected_folder = "../../Output/01_result_files/03b_selected_variables_independent/",
                task_list = task_list,
                num_cores = 200,
                quantile = 0.95)
@@ -184,9 +185,9 @@ t2 <- Sys.time()
 t1 <- Sys.time()
 pp_is_independent_sparse_parallel(parameters,
                covar,
-               results_folder = "../Results/",
-               output_folder = "../Results/05c_predictive_performance_is_independent/05_top10_sparse/",
-               selected_folder = "../Results/03b_selected_variables_independent/",
+               results_folder = "../../Output/01_result_files/",
+               output_folder = "../../Output/01_result_files/04c_predictive_performance_is_independent/05_top10_sparse/",
+               selected_folder = "../../Output/01_result_files/03b_selected_variables_independent/",
                task_list = task_list,
                num_cores = 200,
                quantile = 0.90)
@@ -199,9 +200,9 @@ t2 <- Sys.time()
 t1 <- Sys.time()
 pp_is_independent_sparse_parallel(parameters,
                covar,
-               results_folder = "../Results/",
-               output_folder = "../Results/05c_predictive_performance_is_independent/06_top20_sparse/",
-               selected_folder = "../Results/03b_selected_variables_independent/",
+               results_folder = "../../Output/01_result_files/",
+               output_folder = "../../Output/01_result_files/04c_predictive_performance_is_independent/06_top20_sparse/",
+               selected_folder = "../../Output/01_result_files/03b_selected_variables_independent/",
                task_list = task_list,
                num_cores = 200,
                quantile = 0.80)
@@ -211,17 +212,17 @@ t2 <- Sys.time()
 ## Plots
 
 ```{r}
-plot_top5 <- plot_pp_sparse(pp_folder = "../Results/05c_predictive_performance_is_independent/04_top5_sparse/",
+plot_top5 <- plot_pp_sparse(pp_folder = "../../Output/01_result_files/04c_predictive_performance_is_independent/04_top5_sparse/",
         m = c(100, 200, 400, 800, 1600, 3200, 6400),
         num_edgelists = 100,
         title = "Top 5%")
 
-plot_top10 <- plot_pp_sparse(pp_folder = "../Results/05c_predictive_performance_is_independent/05_top10_sparse/",
+plot_top10 <- plot_pp_sparse(pp_folder = "../../Output/01_result_files/04c_predictive_performance_is_independent/05_top10_sparse/",
         m = c(100, 200, 400, 800, 1600, 3200, 6400),
         num_edgelists = 100,
         title = "Top 10%")
 
-plot_top20 <- plot_pp_sparse(pp_folder = "../Results/05c_predictive_performance_is_independent/06_top20_sparse/",
+plot_top20 <- plot_pp_sparse(pp_folder = "../../Output/01_result_files/04c_predictive_performance_is_independent/06_top20_sparse/",
         m = c(100, 200, 400, 800, 1600, 3200, 6400),
         num_edgelists = 100,
         title = "Top 20%")
@@ -238,7 +239,7 @@ expected_edges <- 1:100
 
 # List all files in the directory that match the naming pattern
 files <- list.files(
-  "../Results/01c_estimates_independent",
+  "../../Output/01_result_files/01c_estimates_independent",
   pattern = "estimates_m_.*_edgelist_.*\\.RData"
 )
 
@@ -271,7 +272,7 @@ task_list <- lapply(m_values, function(m_val) {
       edgelist       = get(
                          load(
                            paste0(
-                             "../GeneratedData/edgelists_independent/",
+                             "../../Data/01_simulation/02_edgelists_independent/",
                              m_val, "/edgelist_", edgelist_index, ".RData"
                            )
                          )
@@ -290,8 +291,8 @@ task_list <- unlist(task_list, recursive = FALSE)
 t1 <- Sys.time()
 pp_oos_independent_parallel(parameters,
                covar,
-               results_folder = "../Results/",
-               output_folder = "../Results/05d_predictive_performance_oos_independent/01_top5/",
+               results_folder = "../../Output/01_result_files/",
+               output_folder = "../../Output/01_result_files/04d_predictive_performance_oos_independent/01_top5/",
                task_list = task_list,
                num_cores = 150,
                quantile = 0.95,
@@ -305,8 +306,8 @@ t2 <- Sys.time()
 t1 <- Sys.time()
 pp_oos_independent_parallel(parameters,
                covar,
-               results_folder = "../Results/",
-               output_folder = "../Results/05d_predictive_performance_oos_independent/02_top10/",
+               results_folder = "../../Output/01_result_files/",
+               output_folder = "../../Output/01_result_files/04d_predictive_performance_oos_independent/02_top10/",
                task_list = task_list,
                num_cores = 150,
                quantile = 0.90,
@@ -320,8 +321,8 @@ t2 <- Sys.time()
 t1 <- Sys.time()
 pp_oos_independent_parallel(parameters,
                covar,
-               results_folder = "../Results/",
-               output_folder = "../Results/05d_predictive_performance_oos_independent/03_top20/",
+               results_folder = "../../Output/01_result_files/",
+               output_folder = "../../Output/01_result_files/04d_predictive_performance_oos_independent/03_top20/",
                task_list = task_list,
                num_cores = 150,
                quantile = 0.80,
@@ -332,17 +333,17 @@ t2 <- Sys.time()
 ## Plots
 
 ```{r}
-plot_top5 <- plot_pp(pp_folder = "../Results/05d_predictive_performance_oos_independent/01_top5/",
+plot_top5 <- plot_pp(pp_folder = "../../Output/01_result_files/04d_predictive_performance_oos_independent/01_top5/",
         m = c(100, 200, 400, 800, 1600, 3200, 6400),
         num_edgelists = 100,
         title = "Top 5%")
 
-plot_top10 <- plot_pp(pp_folder = "../Results/05d_predictive_performance_oos_independent/02_top10/",
+plot_top10 <- plot_pp(pp_folder = "../../Output/01_result_files/04d_predictive_performance_oos_independent/02_top10/",
         m = c(100, 200, 400, 800, 1600, 3200, 6400),
         num_edgelists = 100,
         title = "Top 10%")
 
-plot_top20 <- plot_pp(pp_folder = "../Results/05d_predictive_performance_oos_independent/03_top20/",
+plot_top20 <- plot_pp(pp_folder = "../../Output/01_result_files/04d_predictive_performance_oos_independent/03_top20/",
         m = c(100, 200, 400, 800, 1600, 3200, 6400),
         num_edgelists = 100,
         title = "Top 20%")
@@ -360,7 +361,7 @@ combined_plot_pp_oos <- (plot_top20 + plot_top10 + plot_top5) +
 combined_plot_pp_oos <- combined_plot_pp_oos +
   plot_annotation(tag_levels = "A")
 
-ggsave("../Plots/03_predictive_performance/pp_oos_plots_independent.png", combined_plot_pp_oos, width = 12, height = 5)
+ggsave("../../Output/02_plots/03_predictive_performance/pp_oos_plots_independent.png", combined_plot_pp_oos, width = 12, height = 5)
 ```
 
 
@@ -372,9 +373,9 @@ ggsave("../Plots/03_predictive_performance/pp_oos_plots_independent.png", combin
 t1 <- Sys.time()
 pp_oos_independent_sparse_parallel(parameters,
                covar,
-               results_folder = "../Results/",
-               output_folder = "../Results/05d_predictive_performance_oos_independent/04_top5_sparse/",
-               selected_folder = "../Results/03b_selected_variables_independent/",
+               results_folder = "../../Output/01_result_files/",
+               output_folder = "../../Output/01_result_files/04d_predictive_performance_oos_independent/04_top5_sparse/",
+               selected_folder = "../../Output/01_result_files/03b_selected_variables_independent/",
                task_list = task_list,
                num_cores = 200,
                quantile = 0.95,
@@ -388,9 +389,9 @@ t2 <- Sys.time()
 t1 <- Sys.time()
 pp_oos_independent_sparse_parallel(parameters,
                covar,
-               results_folder = "../Results/",
-               output_folder = "../Results/05d_predictive_performance_oos_independent/05_top10_sparse/",
-               selected_folder = "../Results/03b_selected_variables_independent/",
+               results_folder = "../../Output/01_result_files/",
+               output_folder = "../../Output/01_result_files/04d_predictive_performance_oos_independent/05_top10_sparse/",
+               selected_folder = "../../Output/01_result_files/03b_selected_variables_independent/",
                task_list = task_list,
                num_cores = 200,
                quantile = 0.90)
@@ -403,9 +404,9 @@ t2 <- Sys.time()
 t1 <- Sys.time()
 pp_oos_independent_sparse_parallel(parameters,
                covar,
-               results_folder = "../Results/",
-               output_folder = "../Results/05d_predictive_performance_oos_independent/06_top20_sparse/",
-               selected_folder = "../Results/03b_selected_variables_independent/",
+               results_folder = "../../Output/01_result_files/",
+               output_folder = "../../Output/01_result_files/04d_predictive_performance_oos_independent/06_top20_sparse/",
+               selected_folder = "../../Output/01_result_files/03b_selected_variables_independent/",
                task_list = task_list,
                num_cores = 200,
                quantile = 0.80)
@@ -415,17 +416,17 @@ t2 <- Sys.time()
 ## Plots
 
 ```{r}
-plot_top5 <- plot_pp_sparse(pp_folder = "../Results/05d_predictive_performance_oos_independent/04_top5_sparse/",
+plot_top5 <- plot_pp_sparse(pp_folder = "../../Output/01_result_files/04d_predictive_performance_oos_independent/04_top5_sparse/",
         m = c(100, 200, 400, 800, 1600, 3200, 6400),
         num_edgelists = 100,
         title = "Top 5%")
 
-plot_top10 <- plot_pp_sparse(pp_folder = "../Results/05d_predictive_performance_oos_independent/05_top10_sparse/",
+plot_top10 <- plot_pp_sparse(pp_folder = "../../Output/01_result_files/04d_predictive_performance_oos_independent/05_top10_sparse/",
         m = c(100, 200, 400, 800, 1600, 3200, 6400),
         num_edgelists = 100,
         title = "Top 10%")
 
-plot_top20 <- plot_pp_sparse(pp_folder = "../Results/05d_predictive_performance_oos_independent/06_top20_sparse/",
+plot_top20 <- plot_pp_sparse(pp_folder = "../../Output/01_result_files/04d_predictive_performance_oos_independent/06_top20_sparse/",
         m = c(100, 200, 400, 800, 1600, 3200, 6400),
         num_edgelists = 100,
         title = "Top 20%")
@@ -436,27 +437,36 @@ plot_top20 <- plot_pp_sparse(pp_folder = "../Results/05d_predictive_performance_
 ## Full Models
 
 ```{r}
-table_is_full <- table_pp_independent(pp_folder = "../Results/05c_predictive_performance_is_independent/",
+table_is_full <- table_pp_independent(pp_folder = "../../Output/01_result_files/04c_predictive_performance_is_independent/",
          subfolders = c("01_top5", "02_top10", "03_top20"),
          m = c(100, 200, 400, 800, 1600, 3200, 6400),
          num_edgelists = 100)$latex
 
-table_oos_full <- table_pp_independent(pp_folder = "../Results/05d_predictive_performance_oos_independent/",
+save(table_is_full, file= "../../Output/03_tables/table_pp_is_full_independent.tex")
+
+
+table_oos_full <- table_pp_independent(pp_folder = "../../Output/01_result_files/04d_predictive_performance_oos_independent/",
          subfolders = c("01_top5", "02_top10", "03_top20"),
          m = c(100, 200, 400, 800, 1600, 3200, 6400),
          num_edgelists = 100)$latex
+
+save(table_oos_full, file= "../../Output/03_tables/table_pp_oos_full_independent.tex")
 ```
 
 ## Sparse Models
 
 ```{r}
-table_is_sparse <- table_pp_sparse_independent(pp_folder = "../Results/05c_predictive_performance_is_independent/",
+table_is_sparse <- table_pp_sparse_independent(pp_folder = "../../Output/01_result_files/04c_predictive_performance_is_independent/",
          subfolders = c("04_top5_sparse", "05_top10_sparse", "06_top20_sparse"),
          m = c(100, 200, 400, 800, 1600, 3200, 6400),
          num_edgelists = 100)$latex
 
-table_oos_sparse <- table_pp_sparse_independent(pp_folder = "../Results/05d_predictive_performance_oos_independent/",
+save(table_is_sparse, file= "../../Output/03_tables/table_pp_is_sparse_independent.tex")
+
+table_oos_sparse <- table_pp_sparse_independent(pp_folder = "../../Output/01_result_files/04d_predictive_performance_oos_independent/",
          subfolders = c("04_top5_sparse", "05_top10_sparse", "06_top20_sparse"),
          m = c(100, 200, 400, 800, 1600, 3200, 6400),
          num_edgelists = 100)$latex
+
+save(table_oos_sparse, file= "../../Output/03_tables/table_oos_sparse_independent.tex")
 ```

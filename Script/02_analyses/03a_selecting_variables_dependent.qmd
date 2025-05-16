@@ -15,6 +15,7 @@ library(MASS)
 library(future)
 library(future.apply)
 library(bayestestR)
+library(patchwork)
 library(posterior)
 library(knitr)
 library(kableExtra)
@@ -24,21 +25,21 @@ library(kableExtra)
 
 ```{r}
 source("../01_functions/functions.R")
-load("../GeneratedData/parameters.RData")
+load("../../Data/01_simulation/parameters.RData")
 ```
 
 # Load and Combine edgelists
 
 ```{r}
 edgelists <- list()
-files <- list.files("../GeneratedData/edgelists")
+files <- list.files("../../Data/01_simulation/01_edgelists_dependent")
 
 # subset files with edgelist_
 files <- files[grep("edgelist_", files)]
 
 
 for (i in seq_along(files)) {
-  load(paste0("../GeneratedData/edgelists/", files[i]))
+  load(paste0("../../Data/01_simulation/01_edgelists_dependent/", files[i]))
   
   edgelists[[i]] <- edgelist
 }
@@ -50,8 +51,8 @@ for (i in seq_along(files)) {
 select_variables_parallel(
   m = c(100, 200, 400, 800, 1600, 3200, 6400),
   n_edgelists = 100,
-  folder = "../Results/",
-  num_cores = 170
+  folder = "../../Output/01_result_files/",
+  num_cores = 100
 )
 ```
 
@@ -63,7 +64,7 @@ select_variables_parallel(
 ### Endogenous Predictors
 
 ```{r}
-tdr_endo <- discovery_rate(folder = "../Results/03_selected_variables/",
+tdr_endo <- discovery_rate(folder = "../../Output/01_result_files/02a_selected_variables_dependent/",
                            parameters = parameters,
                            m = c(100, 200, 400, 800, 1600, 3200, 6400),
                            num_edgelists = 100,
@@ -72,13 +73,13 @@ tdr_endo <- discovery_rate(folder = "../Results/03_selected_variables/",
                            num_cores = 1
                            )
 
-save(tdr_endo, file = "../Results/04_discovery_rates/true_discovery_rate_endogenous.RData")
+save(tdr_endo, file = "../../Output/01_result_files/03a_discovery_rates_dependent/true_discovery_rate_endogenous.RData")
 ```
 
 ### Exogenous Predictors
 
 ```{r}
-tdr_exo_weak <- discovery_rate(folder = "../Results/03_selected_variables/",
+tdr_exo_weak <- discovery_rate(folder = "../../Output/01_result_files/02a_selected_variables_dependent/",
                            parameters = parameters,
                            m = c(100, 200, 400, 800, 1600, 3200, 6400),
                            num_edgelists = 100,
@@ -88,9 +89,9 @@ tdr_exo_weak <- discovery_rate(folder = "../Results/03_selected_variables/",
                            num_cores = 1
                            ) 
 
-save(tdr_exo_weak, file = "../Results/04_discovery_rates/true_discovery_rate_exogenous_weak.RData")
+save(tdr_exo_weak, file = "../../Output/01_result_files/03a_discovery_rates_dependent/true_discovery_rate_exogenous_weak.RData")
 
-tdr_exo_medium <- discovery_rate(folder = "../Results/03_selected_variables/",
+tdr_exo_medium <- discovery_rate(folder = "../../Output/01_result_files/02a_selected_variables_dependent/",
                            parameters = parameters,
                            m = c(100, 200, 400, 800, 1600, 3200, 6400),
                            num_edgelists = 100,
@@ -100,9 +101,9 @@ tdr_exo_medium <- discovery_rate(folder = "../Results/03_selected_variables/",
                            num_cores = 1
                            )
 
-save(tdr_exo_medium, file = "../Results/04_discovery_rates/true_discovery_rate_exogenous_medium.RData")
+save(tdr_exo_medium, file = "../../Output/01_result_files/03a_discovery_rates_dependent/true_discovery_rate_exogenous_medium.RData")
 
-tdr_exo_strong <- discovery_rate(folder = "../Results/03_selected_variables/",
+tdr_exo_strong <- discovery_rate(folder = "../../Output/01_result_files/02a_selected_variables_dependent/",
                            parameters = parameters,
                            m = c(100, 200, 400, 800, 1600, 3200, 6400),
                            num_edgelists = 100,
@@ -112,9 +113,9 @@ tdr_exo_strong <- discovery_rate(folder = "../Results/03_selected_variables/",
                            num_cores = 1
                            )
 
-save(tdr_exo_strong, file = "../Results/04_discovery_rates/true_discovery_rate_exogenous_strong.RData")
+save(tdr_exo_strong, file = "../../Output/01_result_files/03a_discovery_rates_dependent/true_discovery_rate_exogenous_strong.RData")
 
-tdr_exo <- discovery_rate(folder = "../Results/03_selected_variables/",
+tdr_exo <- discovery_rate(folder = "../../Output/01_result_files/02a_selected_variables_dependent/",
                            parameters = parameters,
                            m = c(100, 200, 400, 800, 1600, 3200, 6400),
                            num_edgelists = 100,
@@ -123,7 +124,7 @@ tdr_exo <- discovery_rate(folder = "../Results/03_selected_variables/",
                            num_cores = 1
                            )
 
-save(tdr_exo, file = "../Results/04_discovery_rates/true_discovery_rate_exogenous.RData")
+save(tdr_exo, file = "../../Output/01_result_files/03a_discovery_rates_dependent/true_discovery_rate_exogenous.RData")
 ```
 
 ## False Discovery Rates
@@ -131,7 +132,7 @@ save(tdr_exo, file = "../Results/04_discovery_rates/true_discovery_rate_exogenou
 ### Endogenous Predictors
 
 ```{r}
-fdr_endo <- discovery_rate(folder = "../Results/03_selected_variables/",
+fdr_endo <- discovery_rate(folder = "../../Output/01_result_files/02a_selected_variables_dependent/",
                            parameters = parameters,
                            m = c(100, 200, 400, 800, 1600, 3200, 6400),
                            num_edgelists = 100,
@@ -140,14 +141,14 @@ fdr_endo <- discovery_rate(folder = "../Results/03_selected_variables/",
                            num_cores = 1
                            )
 
-save(fdr_endo, file = "../Results/04_discovery_rates/false_discovery_rate_endogenous.RData")
+save(fdr_endo, file = "../../Output/01_result_files/03a_discovery_rates_dependent/false_discovery_rate_endogenous.RData")
 ```
 
 
 ### Exogenous Predictors
 
 ```{r}
-fdr_exo <- discovery_rate(folder = "../Results/03_selected_variables/",
+fdr_exo <- discovery_rate(folder = "../../Output/01_result_files/02a_selected_variables_dependent/",
                            parameters = parameters,
                            m = c(100, 200, 400, 800, 1600, 3200, 6400),
                            num_edgelists = 100,
@@ -156,7 +157,7 @@ fdr_exo <- discovery_rate(folder = "../Results/03_selected_variables/",
                            num_cores = 1
                            )
 
-save(fdr_exo, file = "../Results/04_discovery_rates/false_discovery_rate_exogenous.RData")
+save(fdr_exo, file = "../../Output/01_result_files/03a_discovery_rates_dependent/false_discovery_rate_exogenous.RData")
 ```
 
 
@@ -225,7 +226,7 @@ combined_plot_true <- (endog_plot_true + weak_plot_true + medium_plot_true + str
 combined_plot_true <- combined_plot_true +
   plot_annotation(tag_levels = "A")
 
-ggsave("../Plots/02_variable_selection/true_discovery_rates.png", combined_plot_true, width = 12, height = 8)
+ggsave("../../Output/02_plots/02_variable_selection/true_discovery_rates.png", combined_plot_true, width = 12, height = 8)
 ```
 
 ### False Discovery Rates
@@ -263,7 +264,7 @@ combined_plot_false <- (endog_plot_false + exog_plot_false) +
 combined_plot_false <- combined_plot_false +
   plot_annotation(tag_levels = "A")
 
-ggsave("../Plots/02_variable_selection/false_discovery_rates.png", combined_plot_false, width = 12, height = 5)
+ggsave("../../Output/02_plots/02_variable_selection/false_discovery_rates.png", combined_plot_false, width = 12, height = 5)
 ```
 
 ## Table
@@ -340,6 +341,10 @@ tdr_wide <- tdr_combined %>%
 
 ```
 
+```{r}
+save(tdr_wide, file = "../../Output/03_tables/table_tdr_dependent.tex")
+```
+
 
 ### False Discovery Rates
 ```{r}
@@ -394,6 +399,9 @@ fdr_wide <- fdr_combined %>%
 
 ```
 
+```{r}
+save(fdr_wide, file = "../../Output/03_tables/table_fdr_dependent.tex")
+```
 
 
 # Distance Metrics
@@ -478,7 +486,7 @@ combined_plot_dist <- (endog_plot_dist + exog_plot_dist) +
 combined_plot_dist <- combined_plot_dist +
   plot_annotation(tag_levels = "A")
 
-ggsave("../Plots/02_variable_selection/distance_plots.png", combined_plot_dist, width = 12, height = 5)
+ggsave("../../Output/02_plots/02_variable_selection/distance_plots.png", combined_plot_dist, width = 12, height = 5)
 ```
 
 ### Table
@@ -533,6 +541,10 @@ distances_wide <- distances_combined %>%
 
 ```
 
+```{r}
+save(distances_wide, file = "../../Output/03_tables/table_distances_dependent.tex")
+```
+
 
 # Matthews Correlation Coefficient
 
@@ -567,7 +579,7 @@ combined_plot_mcc <- (endog_plot_mcc + exog_plot_mcc) +
 combined_plot_mcc <- combined_plot_mcc +
   plot_annotation(tag_levels = "A")
 
-ggsave("../Plots/02_variable_selection/mcc_plots.png", combined_plot_mcc, width = 12, height = 5)
+ggsave("../../Output/02_plots/02_variable_selection/mcc_plots.png", combined_plot_mcc, width = 12, height = 5)
 ```
 
 ### Table
@@ -623,3 +635,6 @@ mcc_wide <- mcc_combined %>%
   )
 ```
 
+```{r}
+save(mcc_wide, file = "../../Output/03_tables/table_mcc_dependent.tex")
+```

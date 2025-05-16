@@ -960,7 +960,7 @@ select_variables_parallel <- function(m, n_edgelists, folder, num_cores) {
       # Save estimates in separate files
       path <- paste0(
         folder,
-        "03_selected_variables/selection_m_",
+        "02a_selected_variables_dependent/selection_m_",
         task$m_val,
         "_edgelist_",
         task$edgelist_index,
@@ -1612,7 +1612,7 @@ discovery_rate_independent <- function(folder,
       load(
         paste0(
           folder,
-          "03_selected_variables/selection_m_",
+          "02a_selected_variables_dependent/selection_m_",
           task$m_val,
           "_edgelist_",
           task$edgelist_index,
