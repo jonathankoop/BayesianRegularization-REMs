@@ -59,13 +59,13 @@ The directory additionally includes the following files:
 -   `covar.RData`: This file contains a data frame with the generated exogenous covariates of the 50 actors.
 -   `parameters.RData`: This file contains the list of data-generating parameters.
 
-### `02_application`
+#### `02_application`
 
 The folder `02_application` contains the data used in the empirical application. The data is stored in `.RData` format and includes:
 
 -   `Data_Popular_100.RData`: This file contains dates and actors of collaborations between the most popular 100 Spotify artists that collaborated with other artists at least twice from 2010 to 2023. There are a total of **244** collaboration events.
 
--   `covar_spotify.RData`: This file contains a data frame with the exogenous covariates of the 100 artists. These include gender, popularity and country of origin.
+-   `covar_spotify.RData`: This file contains a data frame with the exogenous covariates of the 100 artists. These include gender, country of origin, popularity, and age.
 
 ## `Output`
 

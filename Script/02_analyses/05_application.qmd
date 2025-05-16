@@ -1,0 +1,1105 @@
+---
+title: "Running Application"
+format: html
+editor: visual
+---
+
+```{r}
+library(tidyverse)
+library(remify)
+library(remstats)
+library(remstimate)
+library(shrinkem)
+library(brms)
+
+source("../01_functions/functions.R")
+load("../../Data/02_application/Data_Popular_100.RData")
+load("../../Data/02_application/covar_spotify.RData")
+```
+
+# Preparing Data
+
+```{r}
+set.seed(123)
+
+# Add random jitter to release_date
+data_popular <- data_popular %>%
+  # turn date into numeric
+  mutate(release_date = as.numeric(as.Date(release_date))) %>%
+  group_by(release_date) %>%
+  mutate(
+    offset = {
+      nrep <- n()
+      if (nrep == 1) {
+        rep(0, nrep)
+      } else {
+        sample(
+          seq(-0.01, 0.01, length.out = nrep),
+          size    = nrep,
+          replace = FALSE
+        )
+      }
+    },
+    release_date = release_date + offset
+  ) %>%
+  ungroup() %>%
+  select(release_date, Artist_1, Artist_2) %>% 
+  arrange(release_date)
+```
+
+
+```{r}
+reh <- remify(data_popular, directed = T, model = "tie")
+
+effects <- ~ 1 + indegreeSender(scaling = "std") + reciprocity(scaling = "std") +
+  outdegreeReceiver(scaling = "std") + indegreeReceiver(scaling = "std") +
+  outdegreeSender(scaling = "std") + totaldegreeSender(scaling = "std") +
+  totaldegreeReceiver(scaling = "std") + otp(scaling = "std") +
+  itp(scaling = "std") + isp(scaling = "std") + psABBA() +
+  psABBY() + psABXA() + psABXB() + psABXY() + psABAY() + psABAB() +
+  rrankSend() + rrankReceive() + recencyContinue() + recencySendSender() +
+  recencyReceiveReceiver() + recencySendReceiver() + recencyReceiveSender() +
+  osp(scaling = "std") + inertia(scaling = "std") +
+  same("gender") +
+  same("country") +
+  minimum("popularity") +
+  maximum("popularity") +
+  minimum("age") +
+  maximum("age")
+
+statistics <- remstats(reh = reh, tie_effects = effects, attr_actors = covar)
+```
+
+# MLE
+
+```{r}
+t1 <- Sys.time()
+fit <- remstimate::remstimate(
+        reh = reh,
+        stats = statistics,
+        method = "MLE",
+        timing = "interval"
+      )
+t2 <- Sys.time()
+runtime_mle <- t2 - t1
+save(runtime_mle, file = "../../Output/01_result_files/05_application/runtime_mle.RData")
+
+selected_mle <- as.data.frame(summary(fit)$coefsTab) %>%
+  filter(`Pr(>|z|)` < 0.05) %>% 
+  # filter out rowname
+  filter(!grepl("baseline", rownames(.))) %>% 
+  # pull rownames
+  mutate(Variable = rownames(.)) %>%
+  pull(Variable)
+  
+```
+
+# ABR
+
+```{r}
+# Extract coefficients and set up for shrinkage
+estimates <- coef(fit)
+cov <- fit$vcov
+cov[upper.tri(cov)] <- t(cov)[upper.tri(cov)]
+
+set.seed(123)
+
+t1 <- Sys.time()
+shrink_hs <- shrinkem(estimates, cov, type = "horseshoe")
+t2 <- Sys.time()
+
+runtime_abr_hs <- runtime_mle + (t2 - t1)
+save(runtime_abr_hs, file = "../../Output/01_result_files/05_application/runtime_abr_hs.RData")
+
+t1 <- Sys.time()
+shrink_ridge <- shrinkem(estimates, cov, type = "ridge")
+t2 <- Sys.time()
+
+runtime_abr_ridge <- runtime_mle + (t2 - t1)
+save(runtime_abr_ridge, file = "../../Output/01_result_files/05_application/runtime_abr_ridge.RData")
+```
+
+
+```{r}
+# Horseshoe
+selected_abr_hs_95 <- rownames(shrink_hs$estimates[shrink_hs$estimates$nonzero == 1,])[!grepl("baseline", rownames(shrink_hs$estimates[shrink_hs$estimates$nonzero == 1,]))]
+selected_abr_hs_mode_01 <- rownames(shrink_hs$estimates[abs(shrink_hs$estimates$shrunk.mode) >= 0.1,])[!grepl("baseline", rownames(shrink_hs$estimates[abs(shrink_hs$estimates$shrunk.mode) >= 0.1,]))]
+selected_abr_hs_median_01 <- rownames(shrink_hs$estimates[abs(shrink_hs$estimates$shrunk.median) >= 0.1,])[!grepl("baseline", rownames(shrink_hs$estimates[abs(shrink_hs$estimates$shrunk.median) >= 0.1,]))]
+selected_abr_hs_mean_01 <- rownames(shrink_hs$estimates[abs(shrink_hs$estimates$shrunk.mean) >= 0.1,])[!grepl("baseline", rownames(shrink_hs$estimates[abs(shrink_hs$estimates$shrunk.mean) >= 0.1,]))]
+
+# Ridge
+selected_abr_ridge_95 <- rownames(shrink_ridge$estimates[shrink_ridge$estimates$nonzero == 1,])[!grepl("baseline", rownames(shrink_ridge$estimates[shrink_ridge$estimates$nonzero == 1,]))]
+selected_abr_ridge_mode_01 <- rownames(shrink_ridge$estimates[abs(shrink_ridge$estimates$shrunk.mode) >= 0.1,])[!grepl("baseline", rownames(shrink_ridge$estimates[abs(shrink_ridge$estimates$shrunk.mode) >= 0.1,]))]
+selected_abr_ridge_median_01 <- rownames(shrink_ridge$estimates[abs(shrink_ridge$estimates$shrunk.median) >= 0.1,])[!grepl("baseline", rownames(shrink_ridge$estimates[abs(shrink_ridge$estimates$shrunk.median) >= 0.1,]))]
+selected_abr_ridge_mean_01 <- rownames(shrink_ridge$estimates[abs(shrink_ridge$estimates$shrunk.mean) >= 0.1,])[!grepl("baseline", rownames(shrink_ridge$estimates[abs(shrink_ridge$estimates$shrunk.mean) >= 0.1,]))]
+```
+
+
+## Evaluate Traces
+
+```{r}
+# Create data frame with draws
+draws_abr_hs <- shrink_hs$draws$beta %>% 
+  as.data.frame() %>%
+  mutate(Iteration = 1:nrow(.))
+
+# Reshape the data into long format for ggplot2.
+draws_abr_hs_long <- melt(draws_abr_hs, id.vars = "Iteration", 
+                variable.name = "Parameter", 
+                value.name = "Value")
+
+parameter_names <- levels(draws_abr_hs_long$Parameter)
+
+trace_plots_abr_hs <- list()
+
+for (i in seq_along(parameter_names)) {
+  # Subset the data for the current parameter
+  df_param <- draws_abr_hs_long %>% filter(Parameter == parameter_names[i])
+  
+  # Create Histogram (left panel)
+  hist_plot <- ggplot(df_param, aes(x = Value)) +
+    geom_histogram(bins = 30, fill = "skyblue", color = "black", alpha = 0.7) +
+    labs(x = paste("b_", parameter_names[i]),
+         y = "Count") +
+    theme_minimal()
+  
+  # Create Trace Plot (right panel)
+  trace_plot <- ggplot(df_param, aes(x = Iteration, y = Value)) +
+    geom_line(color = "darkblue", alpha = 0.8) +
+    labs(x = "Iteration",
+         y = paste("b_", parameter_names[i])) +
+    theme_minimal()
+  
+  # Combine the histogram and trace plot side by side
+  trace_plots_abr_hs[[i]] <- hist_plot + trace_plot + plot_layout(ncol = 2)
+}
+
+trace_plots_abr_hs
+```
+
+# EBR
+
+```{r}
+poisson_df <- function(events, tie_stats, tie_reh, t0 = 0) {
+  
+  # Get unique actors in the event data
+  actors <- sort(unique(c(events$actor1, events$actor2)))
+  
+  # Creating risk set
+  risk_set <- vector("list", dim(tie_stats)[2])
+for (i in 1:dim(tie_stats)[2]) {
+  risk_set[[i]] <- getDyad(tie_reh, i)
+}
+
+risk_set <- do.call(rbind, risk_set)[,2:3]
+
+  M <- tie_reh$M # number of events
+  poisson_list <- vector("list", M) # initialize list to store data frames
+  
+  for (m in 1:M) {
+    
+    # Get statistics for current event m
+    stats_m <- as.data.frame(tie_stats[m, , ])
+    
+    # Combine risk set with covariates
+    df_m <- cbind(risk_set, stats_m)
+    
+    # Create binary outcome y
+    df_m$y <- ifelse(df_m[,1] == events$actor1[m] & df_m[,2] == events$actor2[m], 1, 0)
+    
+    # Add offset
+    df_m$logDelta <- log(tie_reh$intereventTime[m])
+    
+    # Store data frame for event m
+    poisson_list[[m]] <- df_m
+  }
+  
+  # Combine all event data frames in list into one data frame
+  df_poisson <- do.call(rbind, poisson_list)
+  df_poisson <- df_poisson %>% 
+    dplyr::select(-1, -2, -baseline) %>% 
+    # turn all variables that include "same_" to factors
+    mutate(across(contains("same_"), as.factor)) %>%
+    # turn y to integer
+    mutate(y = as.integer(y))
+  
+  return(df_poisson)
+}
+```
+
+```{r}
+df_poisson <- poisson_df(reh$edgelist, tie_stats = statistics, tie_reh = reh)
+      
+      
+      # Create Formula
+      predictors <- names(df_poisson)[1:(which(colnames(df_poisson) == "y") - 1)]
+      glm_formula <- as.formula(paste("y ~", paste(
+        c(predictors, "offset(logDelta)"), collapse = " + "
+      )))
+```
+
+## Horseshoe
+
+```{r}
+t1 <- Sys.time()
+# Estimate the model using brm
+      model <- brm(formula = glm_formula, data = df_poisson, family = poisson(link = "log"), 
+               prior = set_prior(horseshoe(df = 3, scale_global = 1,
+                                     df_global = 3, scale_slab = 2,
+                                     df_slab = 4, par_ratio = NULL,
+                                     autoscale = TRUE), class = "b"),
+               backend = "cmdstanr",
+               cores = 4)
+t2 <- Sys.time()
+      
+save(model, file = "../../Output/01_result_files/05_application/model_ebr_hs.RData")
+
+runtime_ebr_hs <- t2 - t1
+save(runtime_ebr_hs, file = "../../Output/01_result_files/05_application/runtime_ebr_hs.RData")
+```
+
+```{r}
+coefs <- bayestestR::describe_posterior(model, centrality = "all")
+coefs$Parameter <- sub("1$", "", sub("^b_", "", coefs$Parameter))
+      
+selected_ebr_hs_95 <- coefs[!(coefs$CI_low < 0 & coefs$CI_high > 0),]$Parameter[!grepl("Intercept", coefs[!(coefs$CI_low < 0 & coefs$CI_high > 0),]$Parameter)]
+selected_ebr_hs_mode_01 <- coefs[abs(coefs$MAP) >= 0.1,]$Parameter[!grepl("Intercept", coefs[abs(coefs$MAP) >= 0.1,]$Parameter)]
+selected_ebr_hs_median_01 <- coefs[abs(coefs$Median) >= 0.1,]$Parameter[!grepl("Intercept", coefs[abs(coefs$Median) >= 0.1,]$Parameter)]
+selected_ebr_hs_mean_01 <- coefs[abs(coefs$Mean) >= 0.1,]$Parameter[!grepl("Intercept", coefs[abs(coefs$Mean) >= 0.1,]$Parameter)]
+```
+
+
+## Evaluating Traces
+
+```{r}
+draws <- summary(model)$fixed
+for (i in rownames(draws)) {
+  plot(model, variable = paste0("b_", i))
+}
+```
+
+## Plotting Selection
+
+```{r}
+# Create list of selected variables
+selections <- list(
+  mle_05                  = selected_mle,
+  abr_hs_95            = selected_abr_hs_95,
+  abr_hs_mean_01       = selected_abr_hs_mean_01,
+  #abr_hs_median_01     = selected_abr_hs_median_01,
+  abr_hs_mode_01       = selected_abr_hs_mode_01,
+  abr_ridge_95         = selected_abr_ridge_95,
+  abr_ridge_mean_01    = selected_abr_ridge_mean_01,
+  #abr_ridge_median_01  = selected_abr_ridge_median_01,
+  abr_ridge_mode_01    = selected_abr_ridge_mode_01,
+  ebr_hs_95            = selected_ebr_hs_95,
+  ebr_hs_mean_01       = selected_ebr_hs_mean_01,
+  ebr_hs_median_01     = selected_ebr_hs_median_01,
+  ebr_hs_mode_01       = selected_ebr_hs_mode_01
+)
+
+# Create a list of all variables
+all_vars <- colnames(fit$vcov)
+
+# Create a data frame with selection
+df <- bind_rows(
+  lapply(names(selections), function(sel_name) {
+    data.frame(
+      selector = sel_name,
+      variable = all_vars,
+      selected = all_vars %in% selections[[sel_name]],
+      stringsAsFactors = FALSE
+    )
+  })
+)
+
+# change to factor in correct order
+df <- df %>%
+  mutate(
+    selector = factor(selector, levels = names(selections)),
+    variable = factor(variable, levels = all_vars)
+    )
+
+
+# Create plot with selection
+selection_plot <- ggplot(df, aes(x = selector, y = variable, fill = selected)) +
+  geom_tile(color = "grey80") +
+  scale_fill_manual(
+    values = c("FALSE" = "white", "TRUE" = "grey30"),
+    name = NULL,
+    labels = c("FALSE" = "not selected", "TRUE" = "selected")
+  ) +
+  scale_x_discrete(
+    position = "top",
+    labels = c(
+      "mle_05"              = "\u03B1 = 0.05 (MLE)",
+      "abr_hs_95"           = "95% HDI (ABR HS)",
+      "abr_hs_mode_01"      = "|Mode| \u2265 0.1 (ABR HS)",
+      "abr_hs_mean_01"      = "|Mean| \u2265 0.1 (ABR HS)",
+      "abr_ridge_95"        = "95%-CI (ABR Ridge)",
+      "abr_ridge_mode_01"   = "|Mode| \u2265 0.1 (ABR Ridge)",
+      "abr_ridge_mean_01"   = "|Mean| \u2265 0.1 (ABR Ridge)",
+      "ebr_hs_95"           = "95% HDI (EBR HS)",
+      "ebr_hs_mode_01"      = "|Mode| \u2265 0.1 (EBR HS)",
+      "ebr_hs_median_01"      = "|Median| \u2265 0.1 (EBR HS)",
+      "ebr_hs_mean_01"      = "|Mean| \u2265 0.1 (EBR HS)"
+    )
+  ) +
+  scale_y_discrete(limits = rev(levels(df$variable))) +
+  theme_minimal(base_size = 12) +
+  theme(
+    axis.title    = element_blank(),
+    axis.text.x   = element_text(
+      angle = 90, 
+      hjust = 0,
+      vjust = 0.5,
+      size = 10
+    ),
+    axis.text.y   = element_text(size = 10),
+    panel.grid    = element_blank(),
+    legend.text   = element_text(size = 10),
+    legend.position = "bottom"
+  ) +
+  coord_fixed()
+```
+
+# Predictive Performance
+
+```{r}
+pp <- function (edgelist, covar, coefficients, reh, statistics, quantile = 0.95, 
+  warnings = TRUE) 
+{
+  top5 <- rep(FALSE, nrow(edgelist))
+  if (!warnings) {
+    suppressWarnings({
+      for (i in 1:nrow(edgelist)) {
+        lambda <- exp(as.numeric(statistics[i, , ] %*% coefficients))
+      top_5_lambda <- which(lambda > quantile(lambda, 
+        quantile))
+      top_5_dyads <- getDyad(x = reh, dyadID = top_5_lambda)[, 
+        2:3]
+      actual <- edgelist[i, c(2, 3)]
+      top5[i] <- any(top_5_dyads$actor1 == as.character(actual[,1]) & 
+        top_5_dyads$actor2 == as.character(actual[,2]))
+      }
+    })
+  }
+  else {
+    for (i in 1:nrow(edgelist)) {
+      lambda <- exp(as.numeric(statistics[i, , ] %*% coefficients))
+      top_5_lambda <- which(lambda > quantile(lambda, 
+        quantile))
+      top_5_dyads <- getDyad(x = reh, dyadID = top_5_lambda)[, 
+        2:3]
+      actual <- edgelist[i, c(2, 3)]
+      top5[i] <- any(top_5_dyads$actor1 == as.character(actual[,1]) & 
+        top_5_dyads$actor2 == as.character(actual[,2]))
+    }
+  }
+  return(top5 = sum(top5)/nrow(edgelist))
+}
+```
+
+## In-Sample Predictive Performance
+
+### MLE
+
+```{r}
+pp_is_80_mle <- pp(reh$edgelist, covar, coefficients = fit$coefficients, reh = reh, statistics = statistics, quantile = 0.80)
+
+pp_is_90_mle <- pp(reh$edgelist, covar, coefficients = fit$coefficients, reh = reh, statistics = statistics, quantile = 0.90)
+
+pp_is_95_mle <- pp(reh$edgelist, covar, coefficients = fit$coefficients, reh = reh, statistics = statistics, quantile = 0.95)
+```
+
+### ABR HS
+
+```{r}
+pp_is_80_hs <- pp(reh$edgelist, covar, coefficients = shrink_hs$estimates$shrunk.mode, reh = reh, statistics = statistics, quantile = 0.80)
+pp_is_90_hs <- pp(reh$edgelist, covar, coefficients = shrink_hs$estimates$shrunk.mode, reh = reh, statistics = statistics, quantile = 0.90)
+pp_is_95_hs <- pp(reh$edgelist, covar, coefficients = shrink_hs$estimates$shrunk.mode, reh = reh, statistics = statistics, quantile = 0.95)
+```
+
+### ABR Ridge
+
+```{r}
+pp_is_80_ridge <- pp(reh$edgelist, covar, coefficients = shrink_ridge$estimates$shrunk.mode, reh = reh, statistics = statistics, quantile = 0.80)
+pp_is_90_ridge <- pp(reh$edgelist, covar, coefficients = shrink_ridge$estimates$shrunk.mode, reh = reh, statistics = statistics, quantile = 0.90)
+pp_is_95_ridge <- pp(reh$edgelist, covar, coefficients = shrink_ridge$estimates$shrunk.mode, reh = reh, statistics = statistics, quantile = 0.95)
+```
+
+### EBR HS
+
+
+```{r}
+pp_is_80_ebr_hs <- pp(reh$edgelist, covar, coefficients = coefs$MAP, reh = reh, statistics = statistics, quantile = 0.80)
+pp_is_90_ebr_hs <- pp(reh$edgelist, covar, coefficients = coefs$MAP, reh = reh, statistics = statistics, quantile = 0.90)
+pp_is_95_ebr_hs <- pp(reh$edgelist, covar, coefficients = coefs$MAP, reh = reh, statistics = statistics, quantile = 0.95)
+```
+
+### ABR Ridge - Posterior Mean
+
+```{r}
+coefs_sparse <- shrink_ridge$estimates %>% 
+  # filter rownames to only include selected_abr_ridge_mean_01
+  filter(rownames(shrink_ridge$estimates) %in% c(selected_abr_ridge_mean_01, "baseline"))
+
+# Subset statistics to selected_abr_ridge_mean_01
+statistics_sparse <- statistics[,,c("baseline", selected_abr_ridge_mean_01)]
+
+pp_is_80_abr_ridge_mean_01 <- pp(reh$edgelist, covar, coefficients = coefs_sparse$shrunk.mode, reh = reh, statistics = statistics_sparse, quantile = 0.80)
+pp_is_90_abr_ridge_mean_01 <- pp(reh$edgelist, covar, coefficients = coefs_sparse$shrunk.mode, reh = reh, statistics = statistics_sparse, quantile = 0.90)
+pp_is_95_abr_ridge_mean_01 <- pp(reh$edgelist, covar, coefficients = coefs_sparse$shrunk.mode, reh = reh, statistics = statistics_sparse, quantile = 0.95)
+```
+
+
+### Plot
+
+```{r}
+data_pp_is <- data.frame(
+  model    = rep(c("MLE", "ABR HS", "ABR Ridge", "EBR HS", "ABR Ridge (Sparse)"), each = 3),
+  quantile = rep(c(0.80, 0.90, 0.95), times = 5),
+  pp       = c(
+    pp_is_80_mle,  pp_is_90_mle,  pp_is_95_mle,
+    pp_is_80_hs,   pp_is_90_hs,   pp_is_95_hs,
+    pp_is_80_ridge, pp_is_90_ridge, pp_is_95_ridge,
+    pp_is_80_ebr_hs, pp_is_90_ebr_hs, pp_is_95_ebr_hs,
+    pp_is_80_abr_ridge_mean_01, pp_is_90_abr_ridge_mean_01, pp_is_95_abr_ridge_mean_01
+  )
+)
+
+data_pp_is$model <- factor(data_pp_is$model, levels = c("MLE", "ABR HS", "ABR Ridge", "EBR HS", "ABR Ridge (Sparse)"))
+
+method_colors <- c(
+  "MLE" = "#0072B2",
+  "ABR HS" = "#FFA500",
+  "ABR Ridge" = "#3CB371",
+  "EBR HS" = "#DF00FF",
+  "ABR Ridge (Sparse)" = "#92664A"
+)
+
+# Bar plot
+pp_is_plot <- ggplot(data_pp_is, aes(x = factor(quantile), y = pp, fill = model)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(x = "", y = "In-Sample Pred. Perf.") +
+  scale_fill_manual(name = "Model", values = method_colors) +
+  # change x axis labels
+  scale_x_discrete(labels = c(
+    "0.8" = "Top 20%",
+    "0.9" = "Top 10%",
+    "0.95" = "Top 5%"
+  )) +
+  theme(
+    axis.title    = element_blank(),
+    axis.text.x   = element_text(
+      size = 6.5
+    ),
+    axis.text.y   = element_text(size = 6.5),
+    panel.grid    = element_blank(),
+    # change legend text size
+    legend.text = element_text(size = 6.5),
+    legend.title = element_text(size = 8),
+    # legend position
+    legend.position = "bottom"
+  ) +
+  theme_minimal()
+
+```
+
+### Sparse Models
+
+
+#### MLE
+
+```{r}
+coefs_sparse <- fit$coefficients[names(fit$coefficients) %in% c(selected_mle, "baseline")]
+
+# Subset statistics to selected_mle
+statistics_sparse <- statistics[,,c("baseline", selected_mle)]
+
+pp_is_80_mle_05 <- pp(reh$edgelist, covar, coefficients = coefs_sparse, reh = reh, statistics = statistics_sparse, quantile = 0.80)
+pp_is_90_mle_05 <- pp(reh$edgelist, covar, coefficients = coefs_sparse, reh = reh, statistics = statistics_sparse, quantile = 0.90)
+pp_is_95_mle_05 <- pp(reh$edgelist, covar, coefficients = coefs_sparse, reh = reh, statistics = statistics_sparse, quantile = 0.95)
+```
+
+#### ABR HS
+
+Posterior Mean
+
+```{r}
+coefs_sparse <- shrink_hs$estimates %>% 
+  # filter rownames to only include selected_abr_hs_mean_01
+  filter(rownames(shrink_hs$estimates) %in% c(selected_abr_hs_mean_01, "baseline"))
+  
+
+# Subset statistics to selected_abr_hs_mean_01
+statistics_sparse <- statistics[,,c("baseline", selected_abr_hs_mean_01)]
+
+pp_is_80_abr_hs_mean_01 <- pp(reh$edgelist, covar, coefficients = coefs_sparse$shrunk.mode, reh = reh, statistics = statistics_sparse, quantile = 0.80)
+pp_is_90_abr_hs_mean_01 <- pp(reh$edgelist, covar, coefficients = coefs_sparse$shrunk.mode, reh = reh, statistics = statistics_sparse, quantile = 0.90)
+pp_is_95_abr_hs_mean_01 <- pp(reh$edgelist, covar, coefficients = coefs_sparse$shrunk.mode, reh = reh, statistics = statistics_sparse, quantile = 0.95)
+```
+
+
+Posterior Mode
+
+```{r}
+coefs_sparse <- shrink_hs$estimates %>% 
+  # filter rownames to only include selected_abr_hs_mode_01
+  filter(rownames(shrink_hs$estimates) %in% c(selected_abr_hs_mode_01, "baseline"))
+
+# Subset statistics to selected_abr_hs_mode_01
+statistics_sparse <- statistics[,,c("baseline", selected_abr_hs_mode_01)]
+
+pp_is_80_abr_hs_mode_01 <- pp(reh$edgelist, covar, coefficients = coefs_sparse$shrunk.mode, reh = reh, statistics = statistics_sparse, quantile = 0.80)
+
+pp_is_90_abr_hs_mode_01 <- pp(reh$edgelist, covar, coefficients = coefs_sparse$shrunk.mode, reh = reh, statistics = statistics_sparse, quantile = 0.90)
+
+pp_is_95_abr_hs_mode_01 <- pp(reh$edgelist, covar, coefficients = coefs_sparse$shrunk.mode, reh = reh, statistics = statistics_sparse, quantile = 0.95)
+```
+
+95% HDI
+
+```{r}
+coefs_sparse <- shrink_hs$estimates %>% 
+  # filter rownames to only include selected_abr_hs_95
+  filter(rownames(shrink_hs$estimates) %in% c(selected_abr_hs_95, "baseline"))
+
+# Subset statistics to selected_abr_hs_95
+statistics_sparse <- statistics[,,c("baseline", selected_abr_hs_95)]
+
+pp_is_80_abr_hs_95 <- pp(reh$edgelist, covar, coefficients = coefs_sparse$shrunk.mode, reh = reh, statistics = statistics_sparse, quantile = 0.80)
+pp_is_90_abr_hs_95 <- pp(reh$edgelist, covar, coefficients = coefs_sparse$shrunk.mode, reh = reh, statistics = statistics_sparse, quantile = 0.90)
+pp_is_95_abr_hs_95 <- pp(reh$edgelist, covar, coefficients = coefs_sparse$shrunk.mode, reh = reh, statistics = statistics_sparse, quantile = 0.95)
+```
+
+#### ABR Ridge
+
+Posterior Mean
+
+```{r}
+coefs_sparse <- shrink_ridge$estimates %>% 
+  # filter rownames to only include selected_abr_ridge_mean_01
+  filter(rownames(shrink_ridge$estimates) %in% c(selected_abr_ridge_mean_01, "baseline"))
+
+# Subset statistics to selected_abr_ridge_mean_01
+statistics_sparse <- statistics[,,c("baseline", selected_abr_ridge_mean_01)]
+
+pp_is_80_abr_ridge_mean_01 <- pp(reh$edgelist, covar, coefficients = coefs_sparse$shrunk.mode, reh = reh, statistics = statistics_sparse, quantile = 0.80)
+pp_is_90_abr_ridge_mean_01 <- pp(reh$edgelist, covar, coefficients = coefs_sparse$shrunk.mode, reh = reh, statistics = statistics_sparse, quantile = 0.90)
+pp_is_95_abr_ridge_mean_01 <- pp(reh$edgelist, covar, coefficients = coefs_sparse$shrunk.mode, reh = reh, statistics = statistics_sparse, quantile = 0.95)
+```
+
+Posterior Mode
+
+```{r}
+coefs_sparse <- shrink_ridge$estimates %>% 
+  # filter rownames to only include selected_abr_ridge_mode_01
+  filter(rownames(shrink_ridge$estimates) %in% c(selected_abr_ridge_mode_01, "baseline"))
+
+# Subset statistics to selected_abr_ridge_mode_01
+statistics_sparse <- statistics[,,c("baseline", selected_abr_ridge_mode_01)]
+
+pp_is_80_abr_ridge_mode_01 <- pp(reh$edgelist, covar, coefficients = coefs_sparse$shrunk.mode, reh = reh, statistics = statistics_sparse, quantile = 0.80)
+pp_is_90_abr_ridge_mode_01 <- pp(reh$edgelist, covar, coefficients = coefs_sparse$shrunk.mode, reh = reh, statistics = statistics_sparse, quantile = 0.90)
+pp_is_95_abr_ridge_mode_01 <- pp(reh$edgelist, covar, coefficients = coefs_sparse$shrunk.mode, reh = reh, statistics = statistics_sparse, quantile = 0.95)
+```
+
+95% HDI
+
+```{r}
+coefs_sparse <- shrink_ridge$estimates %>% 
+  # filter rownames to only include selected_abr_ridge_95
+  filter(rownames(shrink_ridge$estimates) %in% c(selected_abr_ridge_95, "baseline"))
+
+# Subset statistics to selected_abr_ridge_95
+statistics_sparse <- statistics[,,c("baseline", selected_abr_ridge_95)]
+
+pp_is_80_abr_ridge_95 <- pp(reh$edgelist, covar, coefficients = coefs_sparse$shrunk.mode, reh = reh, statistics = statistics_sparse, quantile = 0.80)
+pp_is_90_abr_ridge_95 <- pp(reh$edgelist, covar, coefficients = coefs_sparse$shrunk.mode, reh = reh, statistics = statistics_sparse, quantile = 0.90)
+pp_is_95_abr_ridge_95 <- pp(reh$edgelist, covar, coefficients = coefs_sparse$shrunk.mode, reh = reh, statistics = statistics_sparse, quantile = 0.95)
+```
+
+#### EBR HS
+
+Posterior Mean
+
+```{r}
+coefs_sparse <- coefs %>% 
+  # filter rownames to only include selected_ebr_hs_mean_01
+  dplyr::filter(Parameter %in% c(selected_ebr_hs_mean_01, "Intercept"))
+
+# Subset statistics to selected_ebr_hs_mean_01
+statistics_sparse <- statistics[,,c("baseline", selected_ebr_hs_mean_01)]
+
+pp_is_80_ebr_hs_mean_01 <- pp(reh$edgelist, covar, coefficients = coefs_sparse$MAP, reh = reh, statistics = statistics_sparse, quantile = 0.80)
+pp_is_90_ebr_hs_mean_01 <- pp(reh$edgelist, covar, coefficients = coefs_sparse$MAP, reh = reh, statistics = statistics_sparse, quantile = 0.90)
+pp_is_95_ebr_hs_mean_01 <- pp(reh$edgelist, covar, coefficients = coefs_sparse$MAP, reh = reh, statistics = statistics_sparse, quantile = 0.95)
+```
+
+Posterior Mode
+
+```{r}
+coefs_sparse <- coefs %>% 
+  # filter rownames to only include selected_ebr_hs_mode_01
+  dplyr::filter(Parameter %in% c(selected_ebr_hs_mode_01, "Intercept"))
+
+statistics_sparse <- statistics[,,c("baseline", selected_ebr_hs_mode_01)]
+
+pp_is_80_ebr_hs_mode_01 <- pp(reh$edgelist, covar, coefficients = coefs_sparse$MAP, reh = reh, statistics = statistics_sparse, quantile = 0.80)
+pp_is_90_ebr_hs_mode_01 <- pp(reh$edgelist, covar, coefficients = coefs_sparse$MAP, reh = reh, statistics = statistics_sparse, quantile = 0.90)
+pp_is_95_ebr_hs_mode_01 <- pp(reh$edgelist, covar, coefficients = coefs_sparse$MAP, reh = reh, statistics = statistics_sparse, quantile = 0.95)
+```
+
+95% HDI
+
+```{r}
+coefs_sparse <- coefs %>% 
+  dplyr::filter(Parameter %in% c(selected_ebr_hs_95, "Intercept"))
+
+# Subset statistics to selected_ebr_hs_95
+statistics_sparse <- statistics[,,c("baseline", selected_ebr_hs_95)]
+
+pp_is_80_ebr_hs_95 <- pp(reh$edgelist, covar, coefficients = coefs_sparse$MAP, reh = reh, statistics = statistics_sparse, quantile = 0.80)
+pp_is_90_ebr_hs_95 <- pp(reh$edgelist, covar, coefficients = coefs_sparse$MAP, reh = reh, statistics = statistics_sparse, quantile = 0.90)
+pp_is_95_ebr_hs_95 <- pp(reh$edgelist, covar, coefficients = coefs_sparse$MAP, reh = reh, statistics = statistics_sparse, quantile = 0.95)
+```
+
+#### Plot
+
+```{r}
+pp_is_sparse <- data.frame(
+  model    = rep(c("MLE (\u03B1 = 0.05)", "ABR HS (|Mean| \u2265 0.1)", "ABR HS (|Mode| \u2265 0.1)", "ABR HS (95% HDI)", "ABR Ridge (|Mean| \u2265 0.1)", "ABR Ridge (|Mode| \u2265 0.1)", "ABR Ridge (95% HDI)", "EBR HS (|Mean| \u2265 0.1)", "EBR HS (|Mode| \u2265 0.1)", "EBR HS (95% HDI)"), each = 3),
+  quantile = rep(c(0.80, 0.90, 0.95), times = 10),
+  pp       = c(
+    pp_is_80_mle_05,  pp_is_90_mle_05,  pp_is_95_mle_05,
+    pp_is_80_abr_hs_mean_01,   pp_is_90_abr_hs_mean_01,   pp_is_95_abr_hs_mean_01,
+    pp_is_80_abr_hs_mode_01,   pp_is_90_abr_hs_mode_01,   pp_is_95_abr_hs_mode_01,
+    pp_is_80_abr_hs_95,   pp_is_90_abr_hs_95,   pp_is_95_abr_hs_95,
+    pp_is_80_abr_ridge_mean_01, pp_is_90_abr_ridge_mean_01, pp_is_95_abr_ridge_mean_01,
+    pp_is_80_abr_ridge_mode_01, pp_is_90_abr_ridge_mode_01, pp_is_95_abr_ridge_mode_01,
+    pp_is_80_abr_ridge_95, pp_is_90_abr_ridge_95, pp_is_95_abr_ridge_95,
+    pp_is_80_ebr_hs_mean_01, pp_is_90_ebr_hs_mean_01, pp_is_95_ebr_hs_mean_01,
+    pp_is_80_ebr_hs_mode_01, pp_is_90_ebr_hs_mode_01, pp_is_95_ebr_hs_mode_01,
+    pp_is_80_ebr_hs_95, pp_is_90_ebr_hs_95, pp_is_95_ebr_hs_95
+  ))
+
+method_colors <- c(
+  "MLE (\u03B1 = 0.05)" = "#0072B2",
+  "ABR HS (|Mean| \u2265 0.1)" = "#FFD700",
+  "ABR HS (|Mode| \u2265 0.1)" = "#FF4500",
+  "ABR HS (95% HDI)" = "#FFA500",
+  "ABR Ridge (|Mean| \u2265 0.1)" = "#40E0D0",
+  "ABR Ridge (|Mode| \u2265 0.1)" = "#AFEEEE",
+  "ABR Ridge (95% HDI)" = "#3CB371",
+  "EBR HS (|Mean| \u2265 0.1)" = "#C54B8C",
+  "EBR HS (|Mode| \u2265 0.1)" = "#D88FD8",
+  "EBR HS (95% HDI)" = "#DF00FF"
+)
+
+# Bar plot
+pp_is_sparse_plot <- ggplot(pp_is_sparse, aes(x = factor(quantile), y = pp, fill = model)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(x = "", y = "In-Sample Pred. Perf.") +
+  scale_fill_manual(name = "Model", values = method_colors) +
+  # change x axis labels
+  scale_x_discrete(labels = c(
+    "0.8" = "Top 20%",
+    "0.9" = "Top 10%",
+    "0.95" = "Top 5%"
+  )) +
+  theme(
+    axis.title    = element_blank(),
+    axis.text.x   = element_text(
+      size = 6.5
+    ),
+    axis.text.y   = element_text(size = 6.5),
+    panel.grid    = element_blank(),
+    # change legend text size
+    legend.text = element_text(size = 6.5),
+    legend.title = element_text(size = 8),
+    # legend position
+    legend.position = "bottom"
+  ) +
+  theme_minimal()
+```
+
+
+
+## Out-of-Sample Predictive Performance
+
+```{r}
+train_prop <- 0.9
+
+# split into test and train
+train <- data_popular[1:floor(train_prop * nrow(data_popular)), ]
+test <- data_popular[(floor(train_prop * nrow(data_popular)) + 1):nrow(data_popular), ]
+
+# train rems
+train_reh <- remify(train, directed = T, model = "tie")
+train_statistics <- remstats(reh = train_reh,
+                             tie_effects = effects,
+                             attr_actors = covar)
+fit <- remstimate::remstimate(
+  reh = train_reh,
+  stats = train_statistics,
+  method = "MLE",
+  timing = "interval"
+)
+
+estimates <- coef(fit)
+cov <- fit$vcov
+cov[upper.tri(cov)] <- t(cov)[upper.tri(cov)]
+
+
+set.seed(123)
+
+shrink_hs <- shrinkem(estimates, cov, type = "horseshoe")
+shrink_ridge <- shrinkem(estimates, cov, type = "ridge")
+```
+
+```{r}
+statistics_oos <- statistics[(floor(train_prop * nrow(data_popular)) + 1):nrow(data_popular),,]
+```
+
+### MLE
+
+```{r}
+pp_oos_80_mle <- pp(test, covar, coefficients = fit$coefficients, reh = reh, statistics = statistics_oos, quantile = 0.80)
+
+pp_oos_90_mle <- pp(test, covar, coefficients = fit$coefficients, reh = reh, statistics = statistics_oos, quantile = 0.90)
+
+pp_oos_95_mle <- pp(test, covar, coefficients = fit$coefficients, reh = reh, statistics = statistics_oos, quantile = 0.95)
+```
+
+### ABR HS
+
+```{r}
+pp_oos_80_hs <- pp(test, covar, coefficients = shrink_hs$estimates$shrunk.mode, reh = reh, statistics = statistics_oos, quantile = 0.80)
+
+pp_oos_90_hs <- pp(test, covar, coefficients = shrink_hs$estimates$shrunk.mode, reh = reh, statistics = statistics_oos, quantile = 0.90)
+
+pp_oos_95_hs <- pp(test, covar, coefficients = shrink_hs$estimates$shrunk.mode, reh = reh, statistics = statistics_oos, quantile = 0.95)
+```
+
+### ABR Ridge
+
+```{r}
+pp_oos_80_ridge <- pp(test, covar, coefficients = shrink_ridge$estimates$shrunk.mode, reh = reh, statistics = statistics_oos, quantile = 0.80)
+
+pp_oos_90_ridge <- pp(test, covar, coefficients = shrink_ridge$estimates$shrunk.mode, reh = reh, statistics = statistics_oos, quantile = 0.90)
+
+pp_oos_95_ridge <- pp(test, covar, coefficients = shrink_ridge$estimates$shrunk.mode, reh = reh, statistics = statistics_oos, quantile = 0.95)
+```
+
+
+### EBR HS
+
+```{r}
+pp_oos_80_ebr_hs <- pp(test, covar, coefficients = coefs$MAP, reh = reh, statistics = statistics_oos, quantile = 0.80)
+
+pp_oos_90_ebr_hs <- pp(test, covar, coefficients = coefs$MAP, reh = reh, statistics = statistics_oos, quantile = 0.90)
+
+pp_oos_95_ebr_hs <- pp(test, covar, coefficients = coefs$MAP, reh = reh, statistics = statistics_oos, quantile = 0.95)
+```
+
+
+```{r}
+coefs_sparse <- shrink_ridge$estimates %>% 
+  # filter rownames to only include selected_abr_ridge_mean_01
+  filter(rownames(shrink_ridge$estimates) %in% c(selected_abr_ridge_mean_01, "baseline"))
+
+# Subset statistics_oos to selected_abr_ridge_mean_01
+statistics_sparse <- statistics_oos[,,c("baseline", selected_abr_ridge_mean_01)]
+
+pp_oos_80_abr_ridge_mean_01 <- pp(test, covar, coefficients = coefs_sparse$shrunk.mode, reh = reh, statistics = statistics_sparse, quantile = 0.80)
+pp_oos_90_abr_ridge_mean_01 <- pp(test, covar, coefficients = coefs_sparse$shrunk.mode, reh = reh, statistics = statistics_sparse, quantile = 0.90)
+pp_oos_95_abr_ridge_mean_01 <- pp(test, covar, coefficients = coefs_sparse$shrunk.mode, reh = reh, statistics = statistics_sparse, quantile = 0.95)
+```
+
+### Plot
+
+```{r}
+data_pp_oos <- data.frame(
+  model    = rep(c("MLE", "ABR HS", "ABR Ridge", "EBR HS", "ABR Ridge (Sparse)"), each = 3),
+  quantile = rep(c(0.80, 0.90, 0.95), times = 5),
+  pp       = c(
+    pp_oos_80_mle,  pp_oos_90_mle,  pp_oos_95_mle,
+    pp_oos_80_hs,   pp_oos_90_hs,   pp_oos_95_hs,
+    pp_oos_80_ridge, pp_oos_90_ridge, pp_oos_95_ridge,
+    pp_oos_80_ebr_hs, pp_oos_90_ebr_hs, pp_oos_95_ebr_hs,
+    pp_oos_80_abr_ridge_mean_01, pp_oos_90_abr_ridge_mean_01, pp_oos_95_abr_ridge_mean_01
+  )
+)
+
+data_pp_oos$model <- factor(data_pp_oos$model, levels = c("MLE", "ABR HS", "ABR Ridge", "EBR HS", "ABR Ridge (Sparse)"))
+
+method_colors <- c(
+  "MLE" = "#0072B2",
+  "ABR HS" = "#FFA500",
+  "ABR Ridge" = "#3CB371",
+  "EBR HS" = "#DF00FF",
+  "ABR Ridge (Sparse)" = "#92664A"
+)
+
+# Bar plot
+pp_oos_plot <- ggplot(data_pp_oos, aes(x = factor(quantile), y = pp, fill = model)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(x = "", y = "Out-Of-Sample Pred. Perf.") +
+  scale_fill_manual(name = "Model", values = method_colors) +
+  # change x axis labels
+  scale_x_discrete(labels = c(
+    "0.8" = "Top 20%",
+    "0.9" = "Top 10%",
+    "0.95" = "Top 5%"
+  )) +
+  theme(
+    axis.title    = element_blank(),
+    axis.text.x   = element_text(
+      size = 6.5
+    ),
+    axis.text.y   = element_text(size = 6.5),
+    panel.grid    = element_blank(),
+    # change legend text size
+    legend.text = element_text(size = 6.5),
+    legend.title = element_text(size = 8),
+    # legend position
+    legend.position = "bottom"
+  ) +
+  theme_minimal()
+
+```
+
+
+### Sparse Models
+
+#### MLE
+
+```{r}
+coefs_sparse <- fit$coefficients[names(fit$coefficients) %in% c(selected_mle, "baseline")]
+
+# Subset statistics_oos to selected_mle
+statistics_sparse <- statistics_oos[,,c("baseline", selected_mle)]
+
+pp_oos_80_mle_05 <- pp(test, covar, coefficients = coefs_sparse, reh = reh, statistics = statistics_sparse, quantile = 0.80)
+pp_oos_90_mle_05 <- pp(test, covar, coefficients = coefs_sparse, reh = reh, statistics = statistics_sparse, quantile = 0.90)
+pp_oos_95_mle_05 <- pp(test, covar, coefficients = coefs_sparse, reh = reh, statistics = statistics_sparse, quantile = 0.95)
+```
+
+#### ABR HS
+
+Posterior Mean
+
+```{r}
+coefs_sparse <- shrink_hs$estimates %>% 
+  # filter rownames to only include selected_abr_hs_mean_01
+  filter(rownames(shrink_hs$estimates) %in% c(selected_abr_hs_mean_01, "baseline"))
+
+# Subset statistics_oos to selected_abr_hs_mean_01
+statistics_sparse <- statistics_oos[,,c("baseline", selected_abr_hs_mean_01)]
+
+pp_oos_80_abr_hs_mean_01 <- pp(test, covar, coefficients = coefs_sparse$shrunk.mode, reh = reh, statistics = statistics_sparse, quantile = 0.80)
+pp_oos_90_abr_hs_mean_01 <- pp(test, covar, coefficients = coefs_sparse$shrunk.mode, reh = reh, statistics = statistics_sparse, quantile = 0.90)
+pp_oos_95_abr_hs_mean_01 <- pp(test, covar, coefficients = coefs_sparse$shrunk.mode, reh = reh, statistics = statistics_sparse, quantile = 0.95)
+```
+
+Posterior Mode
+
+```{r}
+coefs_sparse <- shrink_hs$estimates %>% 
+  # filter rownames to only include selected_abr_hs_mode_01
+  filter(rownames(shrink_hs$estimates) %in% c(selected_abr_hs_mode_01, "baseline"))
+
+# Subset statistics_oos to selected_abr_hs_mode_01
+statistics_sparse <- statistics_oos[,,c("baseline", selected_abr_hs_mode_01)]
+
+pp_oos_80_abr_hs_mode_01 <- pp(test, covar, coefficients = coefs_sparse$shrunk.mode, reh = reh, statistics = statistics_sparse, quantile = 0.80)
+pp_oos_90_abr_hs_mode_01 <- pp(test, covar, coefficients = coefs_sparse$shrunk.mode, reh = reh, statistics = statistics_sparse, quantile = 0.90)
+pp_oos_95_abr_hs_mode_01 <- pp(test, covar, coefficients = coefs_sparse$shrunk.mode, reh = reh, statistics = statistics_sparse, quantile = 0.95)
+```
+
+95% HDI
+
+```{r}
+coefs_sparse <- shrink_hs$estimates %>% 
+  # filter rownames to only include selected_abr_hs_95
+  filter(rownames(shrink_hs$estimates) %in% c(selected_abr_hs_95, "baseline"))
+
+# Subset statistics_oos to selected_abr_hs_95
+statistics_sparse <- statistics_oos[,,c("baseline", selected_abr_hs_95)]
+
+pp_oos_80_abr_hs_95 <- pp(test, covar, coefficients = coefs_sparse$shrunk.mode, reh = reh, statistics = statistics_sparse, quantile = 0.80)
+pp_oos_90_abr_hs_95 <- pp(test, covar, coefficients = coefs_sparse$shrunk.mode, reh = reh, statistics = statistics_sparse, quantile = 0.90)
+pp_oos_95_abr_hs_95 <- pp(test, covar, coefficients = coefs_sparse$shrunk.mode, reh = reh, statistics = statistics_sparse, quantile = 0.95)
+```
+
+#### ABR Ridge
+
+Posterior Mean
+
+```{r}
+coefs_sparse <- shrink_ridge$estimates %>% 
+  # filter rownames to only include selected_abr_ridge_mean_01
+  filter(rownames(shrink_ridge$estimates) %in% c(selected_abr_ridge_mean_01, "baseline"))
+
+# Subset statistics_oos to selected_abr_ridge_mean_01
+statistics_sparse <- statistics_oos[,,c("baseline", selected_abr_ridge_mean_01)]
+
+pp_oos_80_abr_ridge_mean_01 <- pp(test, covar, coefficients = coefs_sparse$shrunk.mode, reh = reh, statistics = statistics_sparse, quantile = 0.80)
+pp_oos_90_abr_ridge_mean_01 <- pp(test, covar, coefficients = coefs_sparse$shrunk.mode, reh = reh, statistics = statistics_sparse, quantile = 0.90)
+pp_oos_95_abr_ridge_mean_01 <- pp(test, covar, coefficients = coefs_sparse$shrunk.mode, reh = reh, statistics = statistics_sparse, quantile = 0.95)
+```
+
+Posterior Mode
+
+```{r}
+coefs_sparse <- shrink_ridge$estimates %>% 
+  # filter rownames to only include selected_abr_ridge_mode_01
+  filter(rownames(shrink_ridge$estimates) %in% c(selected_abr_ridge_mode_01, "baseline"))
+
+# Subset statistics_oos to selected_abr_ridge_mode_01
+statistics_sparse <- statistics_oos[,,c("baseline", selected_abr_ridge_mode_01)]
+
+pp_oos_80_abr_ridge_mode_01 <- pp(test, covar, coefficients = coefs_sparse$shrunk.mode, reh = reh, statistics = statistics_sparse, quantile = 0.80)
+pp_oos_90_abr_ridge_mode_01 <- pp(test, covar, coefficients = coefs_sparse$shrunk.mode, reh = reh, statistics = statistics_sparse, quantile = 0.90)
+pp_oos_95_abr_ridge_mode_01 <- pp(test, covar, coefficients = coefs_sparse$shrunk.mode, reh = reh, statistics = statistics_sparse, quantile = 0.95)
+```
+
+95% HDI
+
+```{r}
+coefs_sparse <- shrink_ridge$estimates %>% 
+  # filter rownames to only include selected_abr_ridge_95
+  filter(rownames(shrink_ridge$estimates) %in% c(selected_abr_ridge_95, "baseline"))
+
+# Subset statistics_oos to selected_abr_ridge_95
+statistics_sparse <- statistics_oos[,,c("baseline", selected_abr_ridge_95)]
+
+pp_oos_80_abr_ridge_95 <- pp(test, covar, coefficients = coefs_sparse$shrunk.mode, reh = reh, statistics = statistics_sparse, quantile = 0.80)
+pp_oos_90_abr_ridge_95 <- pp(test, covar, coefficients = coefs_sparse$shrunk.mode, reh = reh, statistics = statistics_sparse, quantile = 0.90)
+pp_oos_95_abr_ridge_95 <- pp(test, covar, coefficients = coefs_sparse$shrunk.mode, reh = reh, statistics = statistics_sparse, quantile = 0.95)
+```
+
+
+#### EBR HS
+
+Posterior Mean
+
+```{r}
+coefs_sparse <- coefs %>% 
+  # filter rownames to only include selected_ebr_hs_mean_01
+  dplyr::filter(Parameter %in% c(selected_ebr_hs_mean_01, "Intercept"))
+
+# Subset statistics_oos to selected_ebr_hs_mean_01
+statistics_sparse <- statistics_oos[,,c("baseline", selected_ebr_hs_mean_01)]
+pp_oos_80_ebr_hs_mean_01 <- pp(test, covar, coefficients = coefs_sparse$MAP, reh = reh, statistics = statistics_sparse, quantile = 0.80)
+pp_oos_90_ebr_hs_mean_01 <- pp(test, covar, coefficients = coefs_sparse$MAP, reh = reh, statistics = statistics_sparse, quantile = 0.90)
+pp_oos_95_ebr_hs_mean_01 <- pp(test, covar, coefficients = coefs_sparse$MAP, reh = reh, statistics = statistics_sparse, quantile = 0.95)
+```
+
+
+Posterior Mode
+
+```{r}
+coefs_sparse <- coefs %>% 
+  # filter rownames to only include selected_ebr_hs_mode_01
+  dplyr::filter(Parameter %in% c(selected_ebr_hs_mode_01, "Intercept"))
+
+# Subset statistics_oos to selected_ebr_hs_mode_01
+statistics_sparse <- statistics_oos[,,c("baseline", selected_ebr_hs_mode_01)]
+
+pp_oos_80_ebr_hs_mode_01 <- pp(test, covar, coefficients = coefs_sparse$MAP, reh = reh, statistics = statistics_sparse, quantile = 0.80)
+pp_oos_90_ebr_hs_mode_01 <- pp(test, covar, coefficients = coefs_sparse$MAP, reh = reh, statistics = statistics_sparse, quantile = 0.90)
+pp_oos_95_ebr_hs_mode_01 <- pp(test, covar, coefficients = coefs_sparse$MAP, reh = reh, statistics = statistics_sparse, quantile = 0.95)
+```
+
+95% HDI
+
+```{r}
+coefs_sparse <- coefs %>% 
+  dplyr::filter(Parameter %in% c(selected_ebr_hs_95, "Intercept"))
+
+# Subset statistics_oos to selected_ebr_hs_95
+statistics_sparse <- statistics_oos[,,c("baseline", selected_ebr_hs_95)]
+
+pp_oos_80_ebr_hs_95 <- pp(test, covar, coefficients = coefs_sparse$MAP, reh = reh, statistics = statistics_sparse, quantile = 0.80)
+pp_oos_90_ebr_hs_95 <- pp(test, covar, coefficients = coefs_sparse$MAP, reh = reh, statistics = statistics_sparse, quantile = 0.90)
+pp_oos_95_ebr_hs_95 <- pp(test, covar, coefficients = coefs_sparse$MAP, reh = reh, statistics = statistics_sparse, quantile = 0.95)
+```
+
+#### Plot
+
+```{r}
+pp_oos_sparse <- data.frame(
+  model    = rep(c("MLE (\u03B1 = 0.05)", "ABR HS (|Mean| \u2265 0.1)", "ABR HS (|Mode| \u2265 0.1)", "ABR HS (95% HDI)", "ABR Ridge (|Mean| \u2265 0.1)", "ABR Ridge (|Mode| \u2265 0.1)", "ABR Ridge (95% HDI)", "EBR HS (|Mean| \u2265 0.1)", "EBR HS (|Mode| \u2265 0.1)", "EBR HS (95% HDI)"), each = 3),
+  quantile = rep(c(0.80, 0.90, 0.95), times = 10),
+  pp       = c(
+    pp_oos_80_mle_05,  pp_oos_90_mle_05,  pp_oos_95_mle_05,
+    pp_oos_80_abr_hs_mean_01,   pp_oos_90_abr_hs_mean_01,   pp_oos_95_abr_hs_mean_01,
+    pp_oos_80_abr_hs_mode_01,   pp_oos_90_abr_hs_mode_01,   pp_oos_95_abr_hs_mode_01,
+    pp_oos_80_abr_hs_95,   pp_oos_90_abr_hs_95,   pp_oos_95_abr_hs_95,
+    pp_oos_80_abr_ridge_mean_01, pp_oos_90_abr_ridge_mean_01, pp_oos_95_abr_ridge_mean_01,
+    pp_oos_80_abr_ridge_mode_01, pp_oos_90_abr_ridge_mode_01, pp_oos_95_abr_ridge_mode_01,
+    pp_oos_80_abr_ridge_95, pp_oos_90_abr_ridge_95, pp_oos_95_abr_ridge_95,
+    pp_oos_80_ebr_hs_mean_01, pp_oos_90_ebr_hs_mean_01, pp_oos_95_ebr_hs_mean_01,
+    pp_oos_80_ebr_hs_mode_01, pp_oos_90_ebr_hs_mode_01, pp_oos_95_ebr_hs_mode_01,
+    pp_oos_80_ebr_hs_95, pp_oos_90_ebr_hs_95, pp_oos_95_ebr_hs_95))
+
+method_colors <- c(
+  "MLE (\u03B1 = 0.05)" = "#0072B2",
+  "ABR HS (|Mean| \u2265 0.1)" = "#FFD700",
+  "ABR HS (|Mode| \u2265 0.1)" = "#FF4500",
+  "ABR HS (95% HDI)" = "#FFA500",
+  "ABR Ridge (|Mean| \u2265 0.1)" = "#40E0D0",
+  "ABR Ridge (|Mode| \u2265 0.1)" = "#AFEEEE",
+  "ABR Ridge (95% HDI)" = "#3CB371",
+  "EBR HS (|Mean| \u2265 0.1)" = "#C54B8C",
+  "EBR HS (|Mode| \u2265 0.1)" = "#D88FD8",
+  "EBR HS (95% HDI)" = "#DF00FF"
+)
+
+# Bar plot
+pp_oos_sparse_plot <- ggplot(pp_oos_sparse, aes(x = factor(quantile), y = pp, fill = model)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(x = "", y = "Out-Of-Sample Pred. Perf.") +
+  scale_fill_manual(name = "Model", values = method_colors) +
+  # change x axis labels
+  scale_x_discrete(labels = c(
+    "0.8" = "Top 20%",
+    "0.9" = "Top 10%",
+    "0.95" = "Top 5%"
+  )) +
+  theme(
+    axis.title    = element_blank(),
+    axis.text.x   = element_text(
+      size = 6.5
+    ),
+    axis.text.y   = element_text(size = 6.5),
+    panel.grid    = element_blank(),
+    # change legend text size
+    legend.text = element_text(size = 6.5),
+    legend.title = element_text(size = 8),
+    # legend position
+    legend.position = "bottom"
+  ) +
+  theme_minimal()
+```
+
+
+# Combine Plots
+
+```{r}
+combined_plot <- (
+  selection_plot | 
+  (pp_is_plot / pp_oos_plot)
+) &  # Combine legends
+  theme(
+        legend.text = element_text(size = 10),
+  plot.tag = element_text(size = 20, face = "bold"))
+
+combined_plot <- combined_plot +
+  plot_annotation(tag_levels = "A")
+
+ggsave("../../Plots/04_application/application_plot.png", plot = combined_plot, width = 10, height = 8, dpi = 300)
+
+```

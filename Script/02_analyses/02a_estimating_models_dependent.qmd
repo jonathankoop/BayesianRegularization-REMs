@@ -87,7 +87,7 @@ task_list <- unlist(task_list, recursive = FALSE)
 t1 <- Sys.time()
 m <- c(100, 200, 400, 800, 1600, 3200, 6400)
 num_cores <- 25
-estimate_edgelists_parallel_extra(edgelists,
+estimate_edgelists_parallel(edgelists,
                             parameters,
                             covar,
                             m,
