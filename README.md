@@ -10,29 +10,92 @@ To address these issues, this study systematically compares Exact Bayesian Regul
 
 ## Data
 
-This repository provides both simulated and empirical data:
+This repository contains data in the following structure:
 
-### Simulated Data
+``` plaintext
+├── BayesianRegularization-REMs.Rproj
+├── Data
+│   ├── 01_simulation
+│   └── 02_application
+├── Output
+│   ├── 01_result_files
+│   ├── 02_plots
+│   └── 03_tables
+├── README.md
+├── Script
+│   ├── 01_functions
+│   └── 02_analyses
+├── renv
+│   ├── activate.R
+│   └── library
+└── renv.lock
+```
+
+### `BayesianRegularization-REMs.Rproj`
+
+This is the R project file for the repository. It contains the project settings and configuration. When running the project, it is useful to open this file in RStudio.
+
+### `Data`
+
+This folder contains the data used in the analyses. It is divided into two subfolders.
+
+#### `01_simulation`
+
+This folder contains the simulated data used in the analyses.
 
 We generated **100** directed REH datasets, each containing **7,400 events** among **50 actors**. For each dataset, we created subsets by truncating to the first **100**, **200**, **400**, **800**, **1,600**, **3,200**, and **6,400** events, leading to **700** datasets in total for the main simulation. These datasets can be found in `Data/01_simulation/01_edgelists_dependent`.
 
 To assess robustness, we additionally generated independent datasets of each size **M + 1000**. These can be found in `Data/01_simulation/01_edgelists_independent`.
 
-For out-of-sample predictive evaluation, the following **1,000 events** of each dataset were used.
+The datasets were generated using the following effects:
 
-- **Endogenous effects**: 3 non-zero effects (*reciprocity*, *indegreeSender*, and *outdegreeReceiver*) from the `remstats` package.
-- **Exogenous effects**: 12 non-zero *Min* and *Max* effects from 6 exogenous covariates (3 continuous and 3 binary) with effects of varying strengths
+-   **Endogenous effects**: 3 non-zero effects (*reciprocity*, *indegreeSender*, and *outdegreeReceiver*) from the `remstats` package.
+-   **Exogenous effects**: 12 non-zero *Min* and *Max* effects from 6 exogenous covariates (3 continuous and 3 binary) with effects of varying strengths
 
 Using the `remulate` package, dyads were sampled iteratively from a fixed risk set of 2,450 possible possible sender-receiver pairs.
 
-### Empirical Data
+The directory additionally includes the following files:
 
-The empirical example uses collaborations between popular Spotify artists from 2010 to 2023. This dataset includes:
+-   `covar.RData`: This file contains a data frame with the generated exogenous covariates of the 50 actors.
+-   `parameters.RData`: This file contains the list of data-generating parameters.
 
-- **244 directed collaboration events**
-- **62 unique artists**
-- **Exogenous attributes**: Gender, Age, Country, and Popularity (from Spotify and Last.fm)
-- **Endogenous statistics**: All directed REM statistics provided by the `remstats` package
+### `02_application`
+
+The folder `02_application` contains the data used in the empirical application. The data is stored in `.RData` format and includes:
+
+-   `Data_Popular_100.RData`: This file contains dates and actors of collaborations between the most popular 100 Spotify artists that collaborated with other artists at least twice from 2010 to 2023. There are a total of **244** collaboration events.
+
+-   `covar_spotify.RData`: This file contains a data frame with the exogenous covariates of the 100 artists. These include gender, popularity and country of origin.
+
+## `Output`
+
+The `Output` folder contains the results of the analyses. It is divided into three subfolders.
+
+### `01_result_files`
+
+This folder contains the result files of the analyses. The results are stored in `.RData` and include the estimates of the models, the selected variables following the explored selection criteria, the discovery rates, the distance metrics, Matthews' correlation coefficient (MCC), and the predictive performance metrics. Since the results are not nicely formatted, they are summarized into plots and tables in the next two folders.
+
+### `02_plots`
+
+This folder contains the plots of the results. The plots are stored in `.png` format and stored in the following subfolders:
+
+-   `01_coefficient_plots`: This folder contains plots comparing the extent of bias and variance of the estimates from ABR and MLE from both the dependent and independent data. In the plots, the estimates are shown as black dots, and the true data-generating parameters are shown as red dots. The 95% credible intervals (CIs) for the estimates are displayed as ribbons.
+
+-   `02_variable_selection`: This folder contains plots comparing the selection performance of the explored selection criteria. Plots include the True Discovery Rate (TDR), False Discovery Rate (FDR), the distance metric, and Matthews' correlation coefficient (MCC) for the dependent and independent data.
+
+-   `03_predictive_performance`: This folder contains plots comparing the predictive performance of full models (including MLE, ABR and EBR) and sparse models after applying the explored selection criteria. Plots are created for both in-sample (everything starting with `pp_is`) and out-of-sample (everything starting with `pp_oos`) predictive performance metrics.
+
+### `03_tables`
+
+This folder contains the tables of the results. The tables are stored in `.csv` format and include the bias and variance of the estimates from the models, the discovery rates, the distance metrics, Matthews' correlation coefficient (MCC), and the predictive performance metrics. The tables are in the `.tex` format.
+
+## `Script`
+
+The `Script` folder contains the R scripts used in the analyses. It is divided into two subfolders: `01_functions`, where the functions are stored, and `02_analyses`, which contains the scripts for the analyses sourcing the functions from `01_functions`. Further information about the Script can be found in *Reproducing Results* below.
+
+## `renv` and `renv.lock`
+
+The `renv` folder and the `renv.lock` file contain information about the R environment used in the analyses. Through the renv package, the R environment can be restored to the same state as when the analyses were run.
 
 ## Reproducing Results
 
@@ -40,22 +103,51 @@ The empirical example uses collaborations between popular Spotify artists from 2
 
 To reproduce the analyses, the following are needed:
 
-- **R** (≥ 4.4.2)
-- The **`renv`** package for managing the R environment
-- **CmdStanR** backend for Bayesian model fitting
-- Other software and dependencies listed in `Requirements.md`
+-   **R** (≥ 4.4.2)
+-   The **`renv`** package for managing the R environment
+-   **CmdStanR** backend for Bayesian model fitting
+-   Other software and dependencies listed in `Requirements.md`
 
-> ⚠️ **Hardware Requirements:**  
+> ⚠️ **Hardware Requirements:**\
 > Analyses were run on a high-performance machine with the following specifications:
 >
-> - **CPU**: 112 × Intel(R) Xeon(R) Platinum 8580  
-> - **Threads**: 224  
-> - **Memory**: 851 GB RAM  
+> -   **CPU**: 112 × Intel(R) Xeon(R) Platinum 8580\
+> -   **Threads**: 224\
+> -   **Memory**: 851 GB RAM
 >
 > Due to processing large arrays containing endogenous statistics for all potential dyads in the risk set for all time points, particularly this memory is needed in order to allow parallel processing.
+
+Specific package versions can be found in `Requirements.md`.
 
 ### Running the Script
 
 The results can be reproduced by running the script as outlined in the steps below:
 
-1. 
+1.  Open the R project file `BayesianRegularization-REMs.Rproj` in RStudio.
+
+2.  Install the required packages by running the following command in the R console:
+
+    ``` r
+    renv::restore()
+    ```
+
+    Additionally, install the `cmdstanR` backend by running the following command in the R console:
+
+    ``` r
+    cmdstanr::install_cmdstan()
+    ```
+
+3.  Open and run the R script `Script/02_analyses/01_generating_data.qmd`. This script generates the data frame with covariates `covar.RData` and the list of data-generating parameters `parameters.RData` for the simulation study. Following this, using the `remulate` and `future` packages, the script generates the datasets for the simulation study. The datasets are saved in `Data/01_simulation/01_edgelists_dependent` and `Data/01_simulation/01_edgelists_independent`. Lastly bias and variance of the estimates from the MLE models are evaluated and saved in tables in `Output/03_tables` and plots in `Output/02_plots/01_coefficient_plots`.\
+    **Note:** Depending on the number of available cores, the script will take considerable time to run. With the specifications mentioned above, it took approximately **5 hours** to generate the data.
+
+4.  Run the script in `Script/02_analyses/02a_estimating_models_dependent.qmd` and `Script/02_analyses/02b_estimating_models_independent.qmd` to estimate the MLE, ABR and EBR models on the dependent and independent datasets, respectively. The results are saved in `Output/01_result_files/01a_estimates_dependent`, `Output/01b_result_files/01b_estimates_ebr` and `Output/01_result_files/01c_estimates_independent`.\
+    **Note:** The estimation of the models, particularly that of the EBR models using `brms`, will take considerable time to run. With the specifications mentioned above, it took multiple days to estimate all models.
+
+5.  Run the script in `Script/02_analyses/03a_selecting_variables_dependent.qmd` and `Script/02_analyses/03b_selecting_variables_independent.qmd` to select the variables using the explored selection criteria and explore that selection through the computation of the discovery rates, distance metrics and Matthews' correlation coefficient (MCC). To that end, the script also generates plots and tables for the results. The results are saved in `Output/01_result_files/02a_selection_dependent`, `Output/01_result_files/02b_selection_independent`, `Output/01_result_files/03a_discovery_rates_dependent`, `Output/01_result_files/03b_discovery_rates_independent`, and `Output/02_plots/02_variable_selection` and `Output/03_tables`.\
+    **Note:** The selection of variables, i.e., the first code chunk takes moderate time to run (\~20-30 minutes). After the selection, the script will be fast to run.
+
+6.  Run the script in `Script/02_analyses/04a_predicting_performance_dependent.qmd` and `Script/02_analyses/04b_predicting_performance_independent.qmd` to evaluate the predictive performance of the models. The results are saved in `Output/01_result_files/04a_predictive_performance_is_dependent`, `Output/01_result_files/04b_predictive_performance_oos_dependent`, `Output/01_result_files/04c_predictive_performance_is_independent`, `Output/01_result_files/04d_predictive_performance_oos_independent`, `Output/02_plots/03_predictive_performance` and `Output/03_tables`.\
+    **Note:** The computation of the predictive performance metrics takes multiple hours to run. After the computation, the plots and tables are generated quickly.
+
+7.  Run the script in `Script/02_analyses/05_application.qmd` to estimate the models on the Spotify collaboration data, illustrate variable selection and evaluate the predictive performance. The resulting estimates are saved in `Output/01_result_files/05_application` and the plot in `Output/02_plots/04_application`. 
+  **Note:** The estimation of the models using MLE and ABR is fast, however, the estimation of the EBR models using `brms` will take considerable time to run (approximately 5 hours).
