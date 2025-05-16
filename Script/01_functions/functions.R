@@ -1,31 +1,53 @@
+# functions.R
+
+# This file contains all functions necessary to reproduce the analyses in the folder /Script/02_analyses/
+# At the beginning of every Qmd file this script is sourced.
+
 # Generate Edgelists
 
 ## Dependent
 
+# Function to generate dependent edgelists in parallel
 
-generate_edgelists_parallel <- function(effects,
-                                        effect_sizes,
-                                        covar,
-                                        num_events,
-                                        num_cores,
-                                        start,
-                                        end,
-                                        folder) {
+generate_edgelists_parallel <- function(effects, # effects from remulate
+                                        effect_sizes, # effect sizes
+                                        covar, # data frame with covariates
+                                        num_events, # number of events to generate
+                                        num_cores, # number of cores to use
+                                        start, # start index for the edgelist
+                                        end, # end index for the edgelist
+                                        folder # folder to save the edgelists
+                                        ) {
+  
+  # Set up parallel backend
   future::plan(future::multisession, workers = num_cores)
-  environment(effects) <- environment()
+  
+  environment(effects) <- environment() # make sure the function is in the environment
+  
+  # Generate edgelists in parallel
   future.apply::future_lapply(start:end, function(i) {
-    set.seed(i)
-    edgelist <- remulate::remulateTie(effects,
-                                      actors = 1:50,
-                                      events = num_events,
-                                      time   = 10000)
+    set.seed(i) # set seed for reproducibility
+    
+    # Generate edgelist with remulate
+    edgelist <- remulate::remulateTie(effects, # effects from remulate
+                                      actors = 1:50, # indices of actors
+                                      events = num_events, # number of events to generate
+                                      time   = 10000 # time frame
+                                      )
+    
+    # Remove attributes from the edgelist
     edgelist <- as.data.frame(lapply(edgelist, function(x) {
       attributes(x) <- NULL
       x
     }))
+    
+    # save the edgelist to a file in the specified folder
     save(edgelist, file = paste0(folder, "edgelist_", i, ".RData"))
+    
+    # clean up memory
     rm(edgelist)
     gc()
+    
   }, future.seed = NULL, future.globals  = list(
     effects      = effects,
     effect_sizes = effect_sizes,
@@ -40,30 +62,44 @@ generate_edgelists_parallel <- function(effects,
 
 ## Independent
 
+# Function to generate independent edgelists in parallel
 
-generate_edgelists_independent_parallel <- function(effects,
-                                                    effect_sizes,
-                                                    covar,
-                                                    num_events,
-                                                    num_cores,
-                                                    start,
-                                                    end,
-                                                    folder) {
+generate_edgelists_independent_parallel <- function(effects, # effects from remulate
+                                                    effect_sizes, # effect sizes
+                                                    covar, # data frame with covariates
+                                                    num_events, # number of events to generate
+                                                    num_cores, # number of cores to use
+                                                    start, # start index for the edgelist
+                                                    end, # end index for the edgelist
+                                                    folder # folder to save the edgelists
+                                                    ) {
+  # Set up parallel backend
   future::plan(future::multisession, workers = num_cores)
-  environment(effects) <- environment()
+  
+  environment(effects) <- environment() # make sure the function is in the environment
+  
+  # Generate edgelists in parallel
   future.apply::future_lapply(start:end, function(i) {
-    set.seed(num_events + i)
-    edgelist <- remulate::remulateTie(effects,
-                                      actors = 1:50,
-                                      events = num_events,
-                                      time   = 10000)
+    set.seed(num_events + i) # set seed for reproducibility
+    edgelist <- remulate::remulateTie(effects, # effects from remulate
+                                      actors = 1:50, # indices of actors
+                                      events = num_events, # number of events to generate
+                                      time   = 10000 # time frame
+                                      )
+    
+    # Remove attributes from the edgelist
     edgelist <- as.data.frame(lapply(edgelist, function(x) {
       attributes(x) <- NULL
       x
     }))
+    
+    # save the edgelist to a file in the specified folder
     save(edgelist, file = paste0(folder, "edgelist_", i, ".RData"))
+    
+    # clean up memory
     rm(edgelist)
     gc()
+    
   }, future.seed = NULL, future.globals  = list(
     effects      = effects,
     effect_sizes = effect_sizes,
@@ -76,8 +112,9 @@ generate_edgelists_independent_parallel <- function(effects,
 
 
 
-# Generate Function from Parameter List
+# Formula from Parameter List
 
+# Function to generate formula from parameter list
 
 generate_formula <- function(parameters) {
   terms <- c("1") # Start with intercept
@@ -185,7 +222,7 @@ generate_formula <- function(parameters) {
         } else if (component == "FEtype") {
           return("FEtype()")
         } else {
-          return("") # Handle or skip any unrecognized components
+          return("") # Handle or skip unrecognized components
         }
       })
       
@@ -298,121 +335,19 @@ generate_formula <- function(parameters) {
 
 # Subsetting Edgelists
 
+# Function to subset edgelists for dependent analyses
 
 subset_edgelist_single <- function(edgelist, m) {
-  return(edgelist[1:m, ])
+  return(edgelist[1:m, ]) # Subset the first m rows
 }
 
 
 # Estimating MLE and ABR
 
+# Function to estimate MLE and ABR in parallel
+
 
 estimate_edgelists_parallel <- function(edgelists,
-                                        parameters,
-                                        covar,
-                                        m,
-                                        folder,
-                                        num_cores,
-                                        seed = 123) {
-  subset_edgelist_single <- function(edgelist, m) {
-    return(edgelist[1:m, ])
-  }
-  
-  # Set up parallel backend
-  future::plan(future::multisession, workers = num_cores)
-  set.seed(seed)
-  
-  # Precompute shared formula
-  effects <- generate_formula(parameters)
-  
-  # Flatten list of tasks
-  task_list <- lapply(m, function(m_val) {
-    lapply(seq_along(edgelists), function(edgelist_index) {
-      list(
-        m_val = m_val,
-        edgelist_index = edgelist_index,
-        edgelist = subset_edgelist_single(edgelists[[edgelist_index]], m_val)
-      )
-    })
-  })
-  task_list <- unlist(task_list, recursive = FALSE)
-  
-  # Run tasks in parallel
-  future_lapply(task_list, function(task) {
-    tryCatch({
-      # Remify the edgelist
-      reh <- remify(task$edgelist, directed = TRUE, model = "tie")
-      
-      # Compute statistics
-      statistics <- remstats(reh = reh,
-                             tie_effects = effects,
-                             attr_actors = covar)
-      
-      # Estimate the model using MLE
-      fit <- remstimate::remstimate(
-        reh = reh,
-        stats = statistics,
-        method = "MLE",
-        timing = "interval"
-      )
-      
-      # Remove statistics (for memory)
-      rm(statistics)
-      
-      # Extract coefficients and set up for shrinkage
-      coefs <- summary(fit)$coefsTab
-      estimates <- coef(fit)
-      cov <- fit$vcov
-      cov[upper.tri(cov)] <- t(cov)[upper.tri(cov)]
-      
-      # Apply shrinkage methods
-      output <- list(
-        edgelist_index = task$edgelist_index,
-        m = task$m_val,
-        mle_coefs = coefs,
-        shrink_hs = shrinkem(estimates, cov, type = "horseshoe")$estimates,
-        shrink_ridge = shrinkem(estimates, cov, type = "ridge")$estimates
-      )
-      
-      # Save estimates in separate files
-      path <- paste0(
-        folder,
-        "01a_estimates_dependent/estimates_m_",
-        task$m_val,
-        "_edgelist_",
-        task$edgelist_index,
-        ".RData"
-      )
-      save(output, file = path)
-      
-    }, error = function(e) {
-      dir.create("errors", showWarnings = FALSE)
-      err_path <- paste0(
-        folder,
-        "06_errors/error_m_",
-        task$m_val,
-        "_edgelist_",
-        task$edgelist_index,
-        ".RData"
-      )
-      save(e, file = err_path)
-      list(
-        edgelist_index = task$edgelist_index,
-        m = task$m_val,
-        mle_coefs = NULL,
-        shrink_hs = NULL,
-        shrink_ridge = NULL
-      )
-    })
-  }, future.seed = TRUE)
-  
-}
-
-
-# Extra Function for Missing Models
-
-
-estimate_edgelists_parallel_extra <- function(edgelists,
                                               parameters,
                                               covar,
                                               m,
@@ -420,9 +355,6 @@ estimate_edgelists_parallel_extra <- function(edgelists,
                                               num_cores,
                                               seed = 123,
                                               task_list) {
-  subset_edgelist_single <- function(edgelist, m) {
-    return(edgelist[1:m, ])
-  }
   
   # Set up parallel backend
   future::plan(future::multisession, workers = num_cores)
@@ -596,8 +528,14 @@ estimate_edgelists_independent <- function(parameters,
 
 # Rewrite Data to Poisson Format
 
+# Function to transform data frame to a format which can be used for Poisson regression
 
-poisson_df <- function(events, tie_stats, tie_reh, t0 = 0) {
+
+poisson_df <- function(events, # data frame with events (edgelist)
+                       tie_stats, # data frame with statistics
+                       tie_reh, # remify object
+                       t0 = 0 # start time
+                       ) {
   # Creating risk set
   risk_set <- vector("list", dim(tie_stats)[2])
   for (i in 1:dim(tie_stats)[2]) {
@@ -650,10 +588,7 @@ poisson_df <- function(events, tie_stats, tie_reh, t0 = 0) {
 }
 
 
-# Estimating brms Models
-
-
-## Horseshoe
+# Estimating brms Models (EBR HS)
 
 
 estimate_brms_hs_parallel <- function(edgelists,
@@ -702,26 +637,26 @@ estimate_brms_hs_parallel <- function(edgelists,
       
       # Estimate the model using brm
       model <- brm(
-        formula = glm_formula,
-        data = df_poisson,
-        family = poisson(link = "log"),
+        formula = glm_formula, # formula
+        data = df_poisson, # data frame
+        family = poisson(link = "log"), # family for Poisson regression
         prior = set_prior(
           horseshoe(
-            df = 3,
-            scale_global = 1,
-            df_global = 3,
-            scale_slab = 2,
-            df_slab = 4,
-            par_ratio = NULL,
-            autoscale = TRUE
+            df = 3, # 3 degrees of freedom
+            scale_global = 1, # global scale
+            df_global = 3, # 3 degrees of freedom for global scale
+            scale_slab = 2, # slab scale
+            df_slab = 4, # 4 degrees of freedom for slab scale
+            par_ratio = NULL, # ratio of slab to global scale
+            autoscale = TRUE # set to TRUE for automatic scaling
           ),
-          class = "b"
+          class = "b" # only apply to coefficients
         ),
-        backend = "cmdstanr",
-        cores = 4
+        backend = "cmdstanr", # use cmdstanr backend
+        cores = 4 # run each chain on one core
       )
       
-      coefs_ebr_hs <- bayestestR::describe_posterior(model, centrality = "all")
+      coefs_ebr_hs <- bayestestR::describe_posterior(model, centrality = "all") # summary of posterior distribution
       
       
       # Save estimates in separate files
@@ -735,8 +670,8 @@ estimate_brms_hs_parallel <- function(edgelists,
       )
       save(coefs_ebr_hs, file = path)
       
-      fls <- list.files(tempdir(), full.names = T)
-      file.remove(fls)
+      fls <- list.files(tempdir(), full.names = T) # list temporary files
+      file.remove(fls) # remove temporary files
       
     }, error = function(e) {
       dir.create("errors", showWarnings = FALSE)
@@ -757,118 +692,16 @@ estimate_brms_hs_parallel <- function(edgelists,
 }
 
 
-# Extra Function for Missing Models
-
-
-estimate_brms_parallel_extra <- function(edgelists,
-                                         parameters,
-                                         covar,
-                                         m,
-                                         folder,
-                                         num_cores,
-                                         seed = 123,
-                                         task_list) {
-  # Set up parallel backend with appropriate number of workers
-  future::plan(future::multisession, workers = floor(num_cores / 4))
-  set.seed(seed)
-  options(cmdstanr_output_dir = file.path(getwd(), "tmp"))
-  
-  # Precompute shared formula effects
-  effects <- generate_formula(parameters)
-  
-  future_lapply(task_list, function(task) {
-    tryCatch({
-      # Remify the edgelist (creates a remify object)
-      reh <- remify(
-        edgelist = task$edgelist,
-        directed = TRUE,
-        model = "tie"
-      )
-      
-      # Compute network statistics based on the effects and covariates
-      statistics <- remstats(reh = reh,
-                             tie_effects = effects,
-                             attr_actors = covar)
-      
-      # Transform data frame for Poisson regression
-      df_poisson <- poisson_df(task$edgelist,
-                               tie_stats = statistics,
-                               tie_reh = reh)
-      
-      # Create the regression formula based on the predictors
-      predictors <- names(df_poisson)[1:(which(colnames(df_poisson) == "y") - 1)]
-      glm_formula <- as.formula(paste("y ~", paste(
-        c(predictors, "offset(logDelta)"), collapse = " + "
-      )))
-      
-      # Remove statistics (for memory)
-      rm(statistics)
-      
-      # Estimate the model using brms with cmdstanr backend
-      model <- brm(
-        formula = glm_formula,
-        data = df_poisson,
-        family = poisson(link = "log"),
-        prior = set_prior(
-          horseshoe(
-            df = 3,
-            scale_global = 1,
-            df_global = 3,
-            scale_slab = 2,
-            df_slab = 4,
-            par_ratio = NULL,
-            autoscale = TRUE
-          ),
-          class = "b"
-        ),
-        backend = "cmdstanr",
-        cores = 4
-      )
-      
-      coefs_ebr_hs <- bayestestR::describe_posterior(model, centrality = "all")
-      
-      # Save the model estimates into a designated file
-      estimates_path <- paste0(
-        folder,
-        "01b_estimates_ebr/estimates_brms_hs_m_",
-        task$m_val,
-        "_edgelist_",
-        task$edgelist_index,
-        ".RData"
-      )
-      save(coefs_ebr_hs, file = estimates_path)
-      
-      # Clean up temporary files
-      fls <- list.files(tempdir(), full.names = TRUE)
-      file.remove(fls)
-      
-    }, error = function(e) {
-      # Ensure error folder exists (with recursion in case nested folders are needed)
-      dir.create(
-        paste0(folder, "02b_errors_brms"),
-        showWarnings = FALSE,
-        recursive = TRUE
-      )
-      err_path <- paste0(
-        folder,
-        "02b_errors_brms/error_brms_hs_m_",
-        task$m_val,
-        "_edgelist_",
-        task$edgelist_index,
-        ".RData"
-      )
-      save(e, file = err_path)
-      list(edgelist_index = task$edgelist_index,
-           m = task$m_val)
-    })
-  }, future.seed = TRUE)
-}
-
-
 # Selecting Variables
 
+# Function to select variables from estimates in parallel
 
-select_variables_parallel <- function(m, n_edgelists, folder, num_cores) {
+
+select_variables_parallel <- function(m, # values of m
+                                      n_edgelists, # number of edgelists
+                                      folder, # folder with estimates
+                                      num_cores # number of cores to use
+                                      ) {
   # Set up parallel backend
   future::plan(future::multisession, workers = num_cores)
   
@@ -923,7 +756,10 @@ select_variables_parallel <- function(m, n_edgelists, folder, num_cores) {
           )
         )
 
+        # Only get coefficients from parameters
         coefs_ebr_hs$Parameter <- sub("1$", "", sub("^b_", "", coefs_ebr_hs$Parameter))
+        
+        # Selected variables from EBR with Horseshoe
         ebr_hs_95 <- coefs_ebr_hs[!(coefs_ebr_hs$CI_low < 0 &
                                   coefs_ebr_hs$CI_high > 0), ]$Parameter
         ebr_hs_mode_01 <- coefs_ebr_hs[abs(coefs_ebr_hs$MAP) >= 0.1, ]$Parameter
@@ -992,91 +828,14 @@ select_variables_parallel <- function(m, n_edgelists, folder, num_cores) {
 }
 
 
-# Selecting Variables from brms
 
+# Function to select variables from estimates for independent edgelists in parallel
 
-select_variables_brms_parallel <- function(m, n_edgelists, folder, num_cores) {
-  # Set up parallel backend
-  future::plan(future::multisession, workers = num_cores)
-  
-  # Flatten list of tasks
-  task_list <- lapply(m, function(m_val) {
-    lapply(1:n_edgelists, function(edgelist_index) {
-      list(m_val = m_val, edgelist_index = edgelist_index)
-    })
-  })
-  
-  task_list <- unlist(task_list, recursive = FALSE)
-  
-  # Run tasks in parallel
-  future_lapply(task_list, function(task) {
-    tryCatch({
-      load(
-        paste0(
-          folder,
-          "01b_estimates_ebr/estimates_brms_hs_m_",
-          task$m_val,
-          "_edgelist_",
-          task$edgelist_index,
-          ".RData"
-        )
-      )
-
-      coefs_ebr_hs$Parameter <- sub("1$", "", sub("^b_", "", coefs_ebr_hs$Parameter))
-      
-      
-      # Selected variables
-      hs_95 <- coefs_ebr_hs[!(coefs_ebr_hs$CI_low < 0 &
-                         coefs_ebr_hs$CI_high > 0), ]$Parameter
-      hs_map_01 <- coefs_ebr_hs[abs(coefs_ebr_hs$MAP) >= 0.1, ]$Parameter
-      hs_median_01 <- coefs_ebr_hs[abs(coefs_ebr_hs$Median) >= 0.1, ]$Parameter
-      hs_mean_01 <- coefs_ebr_hs[abs(coefs_ebr_hs$Mean) >= 0.1, ]$Parameter
-      
-      selected_vars <- list(
-        edgelist_index = task$edgelist_index,
-        m = task$m_val,
-        
-        hs_95 = hs_95,
-        hs_map_01 = hs_map_01,
-        hs_median_01 = hs_median_01,
-        hs_mean_01 = hs_mean_01
-      )
-      
-      # Save estimates in separate files
-      path <- paste0(
-        folder,
-        "03b_selected_variables_brms/selection_brms_hs_m_",
-        task$m_val,
-        "_edgelist_",
-        task$edgelist_index,
-        ".RData"
-      )
-      save(selected_vars, file = path)
-      
-    }, error = function(e) {
-      err_path <- paste0(
-        folder,
-        "02b_errors_brms/selection_brms_hs_error_m_",
-        task$m_val,
-        "_edgelist_",
-        task$edgelist_index,
-        ".RData"
-      )
-      save(e, file = err_path)
-      list(
-        edgelist_index = task$edgelist_index,
-        m = task$m_val,
-        mle_coefs = NULL,
-        shrink_hs = NULL
-      )
-    })
-  }, future.seed = TRUE)
-  
-}
-
-
-
-select_variables_independent_parallel <- function(m, n_edgelists, folder, num_cores) {
+select_variables_independent_parallel <- function(m, # values of m
+                                                  n_edgelists, # number of edgelists
+                                                  folder, # folder with estimates
+                                                  num_cores # number of cores to use
+                                                  ) {
   # Set up parallel backend
   future::plan(future::multisession, workers = num_cores)
   
@@ -1169,9 +928,15 @@ select_variables_independent_parallel <- function(m, n_edgelists, folder, num_co
 }
 
 
+# Extracting Estimates from Files
 
+# A function that turns all files with estimates into a data frame
 
-extract_estimates <- function(m, n_edgelists, results_folder, num_cores) {
+extract_estimates <- function(m, # values of m
+                              n_edgelists, # number of edgelists
+                              results_folder, # folder with estimates
+                              num_cores # number of cores to use
+                              ) {
   # Set up parallel backend
   future::plan(future::multisession, workers = num_cores)
   
@@ -1187,6 +952,8 @@ extract_estimates <- function(m, n_edgelists, results_folder, num_cores) {
   # Run tasks in parallel
   estimates <- future_lapply(task_list, function(task) {
     tryCatch({
+      
+      # Load the estimates
       load(
         paste0(
           results_folder,
@@ -1198,8 +965,12 @@ extract_estimates <- function(m, n_edgelists, results_folder, num_cores) {
         )
       )
       
-      ncoefs <- length(output[["mle_coefs"]][, 1])
+      ncoefs <- length(output[["mle_coefs"]][, 1]) # number of coefficients
+      
+      # Create a data frame to store estimates
       df <- data.frame(matrix(nrow = ncoefs, ncol = 7))
+      
+      # Set column names
       colnames(df) <- c("m",
                         "iteration",
                         "coef",
@@ -1208,15 +979,19 @@ extract_estimates <- function(m, n_edgelists, results_folder, num_cores) {
                         "abr_ridge",
                         "ebr_hs")
       
-      df$m <- task$m_val
-      df$iteration <- task$edgelist_index
+      # Fill in the data frame with estimates
+      df$m <- task$m_val # value of m
+      df$iteration <- task$edgelist_index # edgelist index
       
-      df$coef <- names(output[["mle_coefs"]][, 1])
-      df$mle <- output[["mle_coefs"]][, 1]
-      df$abr_hs <- output[["shrink_hs"]]$shrunk.mode
-      df$abr_ridge <- output[["shrink_ridge"]]$shrunk.mode
+      df$coef <- names(output[["mle_coefs"]][, 1]) # coefficient names
+      df$mle <- output[["mle_coefs"]][, 1] # MLE estimates
+      df$abr_hs <- output[["shrink_hs"]]$shrunk.mode # ABR HS estimates
+      df$abr_ridge <- output[["shrink_ridge"]]$shrunk.mode # ABR Ridge estimates
       
+      # Load EBR HS estimates only for m = 100 and 200
       if (task$m_val %in% c(100, 200)) {
+        
+        # Load the EBR HS estimates
         load(
           paste0(
             results_folder,
@@ -1228,9 +1003,10 @@ extract_estimates <- function(m, n_edgelists, results_folder, num_cores) {
           )
         )
         
+        # Fill coefficients into the data frame
         df$ebr_hs <- coefs_ebr_hs$MAP
       } else {
-        df$ebr_hs <- NA
+        df$ebr_hs <- NA # No EBR HS estimates for other m values
       }
       
       
@@ -1240,15 +1016,19 @@ extract_estimates <- function(m, n_edgelists, results_folder, num_cores) {
     })
   }, future.seed = TRUE)
   
-  df_estimates <- do.call(rbind, estimates)
+  df_estimates <- do.call(rbind, estimates) # Combine all data frames into one
   
   return(df_estimates)
 }
 
 
+# Function to extract estimates from independent edgelists
 
-
-extract_estimates_independent <- function(m, n_edgelists, results_folder, num_cores) {
+extract_estimates_independent <- function(m, # values of m
+                                          n_edgelists, # number of edgelists
+                                          results_folder, # folder with estimates
+                                          num_cores # number of cores to use
+                                          ) {
   # Set up parallel backend
   future::plan(future::multisession, workers = num_cores)
   
@@ -1264,6 +1044,7 @@ extract_estimates_independent <- function(m, n_edgelists, results_folder, num_co
   # Run tasks in parallel
   estimates <- future_lapply(task_list, function(task) {
     tryCatch({
+      # Load the estimates
       load(
         paste0(
           results_folder,
@@ -1275,17 +1056,18 @@ extract_estimates_independent <- function(m, n_edgelists, results_folder, num_co
         )
       )
       
-      ncoefs <- length(output[["mle_coefs"]][, 1])
-      df <- data.frame(matrix(nrow = ncoefs, ncol = 6))
-      colnames(df) <- c("m", "iteration", "coef", "mle", "abr_hs", "abr_ridge")
+      ncoefs <- length(output[["mle_coefs"]][, 1]) # number of coefficients
+      df <- data.frame(matrix(nrow = ncoefs, ncol = 6)) # initialize data frame
+      colnames(df) <- c("m", "iteration", "coef", "mle", "abr_hs", "abr_ridge") # set column names
       
-      df$m <- task$m_val
-      df$iteration <- task$edgelist_index
+      # Fill in the data frame with estimates
+      df$m <- task$m_val # value of m
+      df$iteration <- task$edgelist_index # edgelist index
       
-      df$coef <- names(output[["mle_coefs"]][, 1])
-      df$mle <- output[["mle_coefs"]][, 1]
-      df$abr_hs <- output[["shrink_hs"]]$shrunk.mode
-      df$abr_ridge <- output[["shrink_ridge"]]$shrunk.mode
+      df$coef <- names(output[["mle_coefs"]][, 1]) # coefficient names
+      df$mle <- output[["mle_coefs"]][, 1] # MLE estimates
+      df$abr_hs <- output[["shrink_hs"]]$shrunk.mode # ABR HS estimates
+      df$abr_ridge <- output[["shrink_ridge"]]$shrunk.mode # ABR Ridge estimates
       
       
       return(df)
@@ -1294,7 +1076,7 @@ extract_estimates_independent <- function(m, n_edgelists, results_folder, num_co
     })
   }, future.seed = TRUE)
   
-  df_estimates <- do.call(rbind, estimates)
+  df_estimates <- do.call(rbind, estimates) # Combine all data frames into one
   
   return(df_estimates)
 }
@@ -1305,63 +1087,81 @@ extract_estimates_independent <- function(m, n_edgelists, results_folder, num_co
 # Plot Estimates
 
 
-plot_estimates <- function(df_estimates,
-                           parameters,
-                           m_val,
-                           estimate = c("mle", "abr_hs", "abr_ridge"),
-                           uncertainty = c("ci", "iqr")) {
-  uncertainty <- match.arg(uncertainty)
-  param_vec <- unlist(parameters)
+plot_estimates <- function(df_estimates, # data frame with estimates
+                           parameters, # true parameters
+                           m_val, # value of m
+                           estimate = c("mle", "abr_hs", "abr_ridge"), # estimate to plot
+                           uncertainty = c("ci", "iqr") # uncertainty measure (either confidence interval or interquartile range)
+                           ) { 
   
+  param_vec <- unlist(parameters) # extract parameters
+  
+  # Create a data frame with true parameters
   df_true <- data.frame(coef = names(param_vec), true_param = param_vec) %>%
-    filter(coef != "baseline")
+    filter(coef != "baseline") # remove baseline
   
   if (uncertainty == "ci") {
+    # Calculate confidence intervals
+    
     df_summarized <- df_estimates %>%
-      filter(m == m_val, coef != "baseline") %>%
-      group_by(coef = factor(coef, levels = names(param_vec))) %>%
+      filter(m == m_val, coef != "baseline") %>% # filter for the current m value and remove baseline
+      group_by(coef = factor(coef, levels = names(param_vec))) %>% # group by coefficient
       summarise(
-        coef_mean = mean(get(estimate)),
-        coef_sd = sd(get(estimate)),
-        n = n(),
+        coef_mean = mean(get(estimate)), # mean estimate
+        coef_sd = sd(get(estimate)), # standard deviation
+        n = n(), # number of estimates
         .groups = "drop"
       ) %>%
       mutate(
-        se = coef_sd / sqrt(n),
-        lower_ci = coef_mean - qnorm(0.975) * se,
-        upper_ci = coef_mean + qnorm(0.975) * se
+        se = coef_sd / sqrt(n), # standard error
+        lower_ci = coef_mean - qnorm(0.975) * se, # lower confidence interval limit
+        upper_ci = coef_mean + qnorm(0.975) * se # upper confidence interval limit
       )
   } else if (uncertainty == "iqr") {
+    # Calculate interquartile range
+    
     df_summarized <- df_estimates %>%
-      filter(m == m_val, coef != "baseline") %>%
-      group_by(coef = factor(coef, levels = names(param_vec))) %>%
+      filter(m == m_val, coef != "baseline") %>% # filter for the current m value and remove baseline
+      group_by(coef = factor(coef, levels = names(param_vec))) %>% # group by coefficient
       summarise(
-        coef_mean = mean(get(estimate)),
-        lower_ci = quantile(get(estimate), 0.25),
-        upper_ci = quantile(get(estimate), 0.75),
+        coef_mean = mean(get(estimate)), # mean estimate
+        lower_ci = quantile(get(estimate), 0.25), # lower iqr limit
+        upper_ci = quantile(get(estimate), 0.75), # upper iqr limit
         .groups = "drop"
       )
   }
   
-  df_plot <- left_join(df_summarized, df_true, by = "coef")
-  df_plot$coef <- factor(df_plot$coef, levels = rev(names(param_vec)[names(param_vec) != "baseline"]))
+  df_plot <- left_join(df_summarized, df_true, by = "coef") # join with true parameters
+  df_plot$coef <- factor(df_plot$coef, levels = rev(names(param_vec)[names(param_vec) != "baseline"])) # reverse order of coefficients for plot
   
+  # Create the plot
   ggplot(df_plot, aes(y = coef)) +
+    # Points of true parameters and estimates
     geom_point(aes(x = true_param, color = "True"),
                alpha = 0.5,
                size = 1.5) +
     geom_point(aes(x = coef_mean, color = "Estimate"),
                alpha = 0.5,
                size = 1.5) +
+    
+    # Error bars for confidence intervals or interquartile range
     geom_errorbarh(aes(xmin = lower_ci, xmax = upper_ci),
                    height = 0.2,
                    color = "black") +
+    
+    # Dashed lines to emphasize thresholds
     geom_vline(xintercept = c(-0.1, 0.1), linetype = "dashed") +
+    
+    # limits and labels
     xlim(c(-6, 6)) +
     labs(title = paste0("M=", m_val),
          x = "Value",
          y = "") +
+    
+    # Theme
     theme_linedraw() +
+    
+    # Colors and font sizes
     scale_color_manual(values = c("Estimate" = "black", "True" = "red")) +
     theme(
       axis.text.y = element_text(size = 8),
@@ -1374,12 +1174,13 @@ plot_estimates <- function(df_estimates,
 
 
 
-## Assess Bias
+# Assess Bias
 
 
-bias_estimates <- function(parameters,
-                           df_estimates,
-                           method = c("mle", "abr_hs", "abr_ridge", "ebr_hs")) {
+bias_estimates <- function(parameters, # true parameters
+                           df_estimates, # data frame with estimates
+                           method = c("mle", "abr_hs", "abr_ridge", "ebr_hs") # methods to assess bias
+                           ) {
   # Extract coefficients and settings
   all_coefficients <- names(parameters)
   num_iterations <- max(df_estimates$iteration)
@@ -1410,17 +1211,18 @@ bias_estimates <- function(parameters,
 
 # Discovery Rates
 
-## Compute Discovery Rates
+# Functions to calculate discovery rates for dependent and independent edgelists
 
 
-discovery_rate <- function(folder,
-                           parameters,
-                           m,
-                           num_edgelists,
-                           endo = TRUE,
-                           tdr = TRUE,
-                           effect_size = NULL,
-                           num_cores) {
+discovery_rate <- function(folder, # folder with estimates
+                           parameters, # true parameters
+                           m, # values of m
+                           num_edgelists, # number of edgelists
+                           endo = TRUE, # if TRUE, get endogenous predictors
+                           tdr = TRUE, # if TRUE, calculate true discovery rate
+                           effect_size = NULL, # if not NULL, filter parameters by effect size
+                           num_cores # number of cores to use
+                           ) {
   # Set up parallel backend
   future::plan(future::multisession, workers = num_cores)
   
@@ -1551,14 +1353,17 @@ discovery_rate <- function(folder,
 
 ### Independent
 
+# Function to calculate discovery rates for independent edgelists
 
-discovery_rate_independent <- function(folder,
-                                       parameters,
-                                       m,
-                                       num_edgelists,
-                                       endo = TRUE,
-                                       tdr = TRUE,
-                                       num_cores) {
+
+discovery_rate_independent <- function(folder, # folder with estimates
+                                       parameters, # true parameters
+                                       m, # values of m
+                                       num_edgelists, # number of edgelists
+                                       endo = TRUE, # if TRUE, get endogenous predictors
+                                       tdr = TRUE, # if TRUE, calculate true discovery rate
+                                       num_cores # number of cores to use
+                                       ) {
   # Set up parallel backend
   future::plan(future::multisession, workers = num_cores)
   
@@ -1684,151 +1489,22 @@ discovery_rate_independent <- function(folder,
 }
 
 
-### brms
-
-
-discovery_rate_brms <- function(folder,
-                                parameters,
-                                m,
-                                num_edgelists,
-                                endo = TRUE,
-                                tdr = TRUE,
-                                effect_size = NULL,
-                                num_cores) {
-  # Set up parallel backend
-  future::plan(future::multisession, workers = num_cores)
-  
-  if (tdr) {
-    # Get non-zero coefficients
-    # If effect_size is provided, filter the parameters
-    if (!is.null(effect_size)) {
-      param_names <- names(parameters[parameters != 0 &
-                                        parameters == effect_size])
-    } else {
-      param_names <- names(parameters[parameters != 0])
-    }
-  } else {
-    # Get zero coefficients if tdr == FALSE
-    param_names <- names(parameters[parameters == 0])
-  }
-  
-  if (endo) {
-    # Get endogenous predictors if endo == TRUE
-    coefficients <- param_names[!grepl("_", param_names) &
-                                  !(param_names %in% c("baseline", "Intercept"))]
-  } else {
-    # Get exogenous predictors if endo == FALSE
-    coefficients <- param_names[grepl("_", param_names) &
-                                  !(param_names %in% c("baseline", "Intercept"))]
-  }
-  
-  
-  # All coefficients (both nonzero and zero)
-  all_coefficients <- names(parameters)
-  num_coefficients <- length(all_coefficients)
-  
-  # Flatten list of tasks
-  task_list <- lapply(m, function(m_val) {
-    lapply(seq_along(edgelists), function(edgelist_index) {
-      list(
-        m_val = m_val,
-        edgelist_index = edgelist_index,
-        edgelist = subset_edgelist_single(edgelists[[edgelist_index]], m_val)
-      )
-    })
-  })
-  task_list <- unlist(task_list, recursive = FALSE)
-  
-  # Run tasks in parallel
-  selection <- future_lapply(task_list, function(task) {
-    tryCatch({
-      load(
-        paste0(
-          folder,
-          "03b_selected_variables_brms/selection_brms_hs_m_",
-          task$m_val,
-          "_edgelist_",
-          task$edgelist_index,
-          ".RData"
-        )
-      )
-      
-      
-      
-      # Create the data frame
-      df <- data.frame(
-        m = rep(task$m_val, num_coefficients),
-        iteration = rep(task$edgelist_index, num_coefficients),
-        coef = all_coefficients
-      )
-      
-      # Define methods
-      methods <- setdiff(names(selected_vars), c("edgelist_index", "m"))
-      
-      # Add columns to data for each method
-      for (i in methods) {
-        df[[paste0("selected_", i)]] <- "not selected"
-        df[[paste0("selected_", i)]][df$coef %in% selected_vars[[i]]] <- "selected"
-        df[[paste0("selected_", i)]] <- factor(df[[paste0("selected_", i)]], levels = c("not selected", "selected"))
-      }
-      
-      return(df)
-      
-    }, error = function(e) {
-      NULL
-    })
-  }, future.seed = TRUE)
-  
-  # Combine list to data frame
-  df_selection <- do.call(rbind, selection)
-  
-  # remove list for memory
-  rm(selection)
-  
-  
-  # Compute discovery rate
-  discovery_rate <- df_selection %>%
-    filter(coef %in% coefficients) %>%
-    pivot_longer(
-      cols = starts_with("selected_"),
-      names_to = "method",
-      values_to = "selected"
-    ) %>%
-    mutate(method = sub("^selected_", "", method)) %>%
-    group_by(m, iteration, method) %>% summarise(
-      selected = sum(selected == "selected"),
-      total = n(),
-      discovery_rate = selected / total,
-      .groups = 'drop'
-    ) %>%
-    # calculate variance of discovery rate by m and method
-    group_by(m, method) %>% summarise(
-      mean_discovery_rate = mean(discovery_rate),
-      se_discovery_rate = sd(discovery_rate) / sqrt(n()),
-      .groups = 'drop'
-    ) %>%
-    ungroup() %>%
-    mutate(
-      lower = mean_discovery_rate - qnorm(0.975) * se_discovery_rate,
-      upper = mean_discovery_rate + qnorm(0.975) * se_discovery_rate
-    )
-  
-  return(list(discovery_rate = discovery_rate, data = df_selection))
-}
 
 
 ## Plot Discovery Rates
 
-
+# Function to plot discovery rates for dependent and independent edgelists
 
 plot_discovery_rate <- function(data, criteria, title = "") {
+  
+  # Define legend labels
   legend_labels <- c(
     "mle_05"              = "\u03B1 = 0.05 (MLE)",
     "abr_hs_95"           = "95% HDI (ABR HS)",
     "abr_hs_mode_01"      = "|Mode| \u2265 0.1 (ABR HS)",
     "abr_hs_median_01"    = "|Median| \u2265 0.1 (ABR HS)",
     "abr_hs_mean_01"      = "|Mean| \u2265 0.1 (ABR HS)",
-    "abr_ridge_95"        = "95%-CI (ABR Ridge)",
+    "abr_ridge_95"        = "95% HDI (ABR Ridge)",
     "abr_ridge_mode_01"   = "|Mode| \u2265 0.1 (ABR Ridge)",
     "abr_ridge_median_01" = "|Median| \u2265 0.1 (ABR Ridge)",
     "abr_ridge_mean_01"   = "|Mean| \u2265 0.1 (ABR Ridge)",
@@ -1838,6 +1514,7 @@ plot_discovery_rate <- function(data, criteria, title = "") {
     "ebr_hs_median_01" = "|Median| \u2265 0.1 (EBR HS)"
   )
   
+  # Define distinct colors for each method
   method_colors <- c(
     "mle_05"             = "#0072B2",
     
@@ -1926,15 +1603,19 @@ plot_discovery_rate <- function(data, criteria, title = "") {
 
 ## Plot Distance Metric
 
+# Function to plot distance metric for dependent and independent edgelists
+
 
 plot_distance_metric <- function(data, criteria, title = "") {
+  
+  # Define legend labels
   legend_labels <- c(
     "mle_05"              = "\u03B1 = 0.05 (MLE)",
     "abr_hs_95"           = "95% HDI (ABR HS)",
     "abr_hs_mode_01"      = "|Mode| \u2265 0.1 (ABR HS)",
     "abr_hs_median_01"    = "|Median| \u2265 0.1 (ABR HS)",
     "abr_hs_mean_01"      = "|Mean| \u2265 0.1 (ABR HS)",
-    "abr_ridge_95"        = "95%-CI (ABR Ridge)",
+    "abr_ridge_95"        = "95% HDI (ABR Ridge)",
     "abr_ridge_mode_01"   = "|Mode| \u2265 0.1 (ABR Ridge)",
     "abr_ridge_median_01" = "|Median| \u2265 0.1 (ABR Ridge)",
     "abr_ridge_mean_01"   = "|Mean| \u2265 0.1 (ABR Ridge)",
@@ -1944,6 +1625,7 @@ plot_distance_metric <- function(data, criteria, title = "") {
     "ebr_hs_median_01" = "|Median| \u2265 0.1 (EBR HS)"
   )
   
+  # Define distinct colors for each method
   method_colors <- c(
     "mle_05"             = "#0072B2",
     
@@ -2021,10 +1703,12 @@ plot_distance_metric <- function(data, criteria, title = "") {
 
 # Matthews' Correlation Coefficient
 
+# Function to calculate Matthews' correlation coefficient (MCC) for dependent and independent edgelists
 
-mcc <- function(data,
-                parameters,
-                endo = TRUE,
+
+mcc <- function(data, # data frame with selection results
+                parameters, # true parameters
+                endo = TRUE, # if TRUE, get endogenous predictors
                 selection_label = "selected") {
   param_names <- names(parameters)
   if (endo) {
@@ -2037,7 +1721,9 @@ mcc <- function(data,
                                   !(param_names %in% c("baseline", "Intercept"))]
   }
   
-  selection_cols <- grep("^selected", names(data), value = TRUE)
+  selection_cols <- grep("^selected", names(data), value = TRUE) # detect selection columns
+  
+  # Calculate Matthews' correlation coefficient (MCC)
   results <- data %>%
     dplyr::filter(coef %in% coefficients) %>%
     group_by(iteration, m) %>%
@@ -2055,11 +1741,11 @@ mcc <- function(data,
       fn <- sum(pred_class == 0 &
                   true_class == 1)  # false negatives
       
-      # Compute the numerator and denominator for MCC.
+      # Compute the numerator and denominator for MCC
       numerator <- tp * tn - fp * fn
       denominator <- sqrt((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn))
       
-      # Check if denominator is NA or zero, and return NA if so.
+      # Check if denominator is NA or zero
       if (is.na(denominator) || denominator == 0) {
         return(NA)
       } else {
@@ -2079,7 +1765,7 @@ mcc <- function(data,
       names_pattern = "mcc_selected_(.*)_(mean|se)",
       values_to = "value"
     ) %>%
-    # Reformat the data so that mean and se are in separate columns.
+    # Reformat data to have method and stat as separate columns
     pivot_wider(names_from = stat, values_from = value) %>%
     mutate(lower = mean - qnorm(0.975) * se,
            upper = mean + qnorm(0.975) * se) %>%
@@ -2094,13 +1780,15 @@ mcc <- function(data,
 
 
 plot_mcc <- function(data, criteria, title = "") {
+  
+  # Define legend labels
   legend_labels <- c(
     "mle_05"              = "\u03B1 = 0.05 (MLE)",
     "abr_hs_95"           = "95% HDI (ABR HS)",
     "abr_hs_mode_01"      = "|Mode| \u2265 0.1 (ABR HS)",
     "abr_hs_median_01"    = "|Median| \u2265 0.1 (ABR HS)",
     "abr_hs_mean_01"      = "|Mean| \u2265 0.1 (ABR HS)",
-    "abr_ridge_95"        = "95%-CI (ABR Ridge)",
+    "abr_ridge_95"        = "95% HDI (ABR Ridge)",
     "abr_ridge_mode_01"   = "|Mode| \u2265 0.1 (ABR Ridge)",
     "abr_ridge_median_01" = "|Median| \u2265 0.1 (ABR Ridge)",
     "abr_ridge_mean_01"   = "|Mean| \u2265 0.1 (ABR Ridge)",
@@ -2110,6 +1798,7 @@ plot_mcc <- function(data, criteria, title = "") {
     "ebr_hs_median_01" = "|Median| \u2265 0.1 (EBR HS)"
   )
   
+  # Define distinct colors for each method
   method_colors <- c(
     "mle_05"             = "#0072B2",
     
@@ -2152,7 +1841,7 @@ plot_mcc <- function(data, criteria, title = "") {
   )
   
   data %>%
-    dplyr::filter(method %in% criteria) %>%
+    dplyr::filter(method %in% criteria) %>% # filter data by criteria
     ggplot(aes(x = m, y = mean, group = method)) +
     
     # Mean discovery rate as line
@@ -2187,20 +1876,21 @@ plot_mcc <- function(data, criteria, title = "") {
 
 # Predictive Performance
 
-
-predictive_performance_all <- function(edgelist,
-                                       covar,
-                                       coefficients,
-                                       reh,
-                                       statistics,
-                                       quantile = 0.95,
-                                       warnings = TRUE) {
-  top5 <- rep(FALSE, nrow(edgelist))
+# Function to calculate predictive performance for dependent edgelists
+predictive_performance_all <- function(edgelist, # list of edgelists
+                                       covar, # data frame with covariates
+                                       coefficients, # coefficients
+                                       reh, # remify object
+                                       statistics, # array with statistics
+                                       quantile = 0.95, # quantile to evaluate
+                                       warnings = TRUE # display warnings
+                                       ) {
+  top5 <- rep(FALSE, nrow(edgelist)) # Initialize vector to store results
   
   if (!warnings) {
     suppressWarnings({
       for (i in 1:nrow(edgelist)) {
-        # Calculate event rates for every actor in R
+        # Calculate event rates for every actor in riskset
         lambda <- exp(as.numeric(statistics[i, , ] %*% coefficients))
         
         # Extract top 5% of lambdas row indices
@@ -2237,39 +1927,49 @@ predictive_performance_all <- function(edgelist,
 }
 
 
-### 3.3.2 In-Sample Predictive Performance for All Edgelists
+# In-Sample Predictive Performance
 
-### All Coefficients
+## All Coefficients
 
+# Function to calculate in-sample predictive performance for dependent edgelists
 
-pp_is_parallel <- function(edgelists,
-                           m,
-                           parameters,
-                           covar,
-                           results_folder,
-                           statistics_folder,
-                           output_folder,
-                           num_cores,
-                           quantile = 0.95) {
+pp_is_parallel <- function(edgelists, # list of edgelists
+                           m, # vector of m values
+                           parameters, # true parameters
+                           covar, # data frame with covariates
+                           results_folder, # folder with results
+                           statistics_folder, # folder with statistics
+                           output_folder, # folder to save output
+                           num_cores, # number of cores to use
+                           quantile = 0.95 # quantile to evaluate
+                           ) {
+  
+  # set up parallel backend
   future::plan(future::multisession, workers = num_cores)
   
+  
+  # Set up task list
   task_list <- lapply(m, function(m_val) {
     lapply(seq_along(edgelists), function(edgelist_index) {
       list(m_val = m_val, edgelist_index = edgelist_index)
     })
   })
   
-  task_list <- unlist(task_list, recursive = FALSE)
+  task_list <- unlist(task_list, recursive = FALSE) # flatten the list
   
+  # Run tasks in parallel
   future_lapply(task_list, function(task) {
     tryCatch({
+      
+      # remify object
       reh <- remify(
-        edgelists[[task$edgelist_index]],
-        directed = TRUE,
-        model = "tie",
-        riskset = "full"
+        edgelists[[task$edgelist_index]], # edgelist
+        directed = TRUE, # directed network
+        model = "tie", # tie-oriented model
+        riskset = "full" # full riskset
       )
       
+      # load estimates and statistics
       load(
         paste0(
           results_folder,
@@ -2289,6 +1989,7 @@ pp_is_parallel <- function(edgelists,
         )
       )
       
+      # Predictive performance for MLE
       mle_pp <- predictive_performance_all(
         edgelist = edgelists[[task$edgelist_index]][1:task$m_val, ],
         covar = covar,
@@ -2298,6 +1999,7 @@ pp_is_parallel <- function(edgelists,
         quantile = quantile
       )
       
+      # Predictive performance for ABR Ridge
       abr_ridge_pp <- predictive_performance_all(
         edgelist = edgelists[[task$edgelist_index]][1:task$m_val, ],
         covar = covar,
@@ -2308,16 +2010,19 @@ pp_is_parallel <- function(edgelists,
         warnings = FALSE
       )
       
+      # Predictive performance for ABR HS
       abr_hs_pp <- predictive_performance_all(
         edgelist = edgelists[[task$edgelist_index]][1:task$m_val, ],
         covar = covar,
-        coefficients = output$shrink_hs$estimates$shrunk.mode,
+        coefficients = output$shrink_hs$shrunk.mode,
         reh = reh,
         statistics = statistics[1:task$m_val, , ],
         quantile = quantile,
         warnings = FALSE
       )
       
+      
+      # If m is 100 or 200, load EBR HS estimates
       if (task$m_val %in% c(100, 200)) {
         load(
           paste0(
@@ -2330,6 +2035,7 @@ pp_is_parallel <- function(edgelists,
           )
         )
         
+        # Predictive performance for EBR HS
         ebr_hs_pp <- predictive_performance_all(
           edgelist = edgelists[[task$edgelist_index]][1:task$m_val, ],
           covar = covar,
@@ -2340,9 +2046,10 @@ pp_is_parallel <- function(edgelists,
           warnings = FALSE
         )
       } else {
-        ebr_hs_pp <- NA
+        ebr_hs_pp <- NA # if m is not 100 or 200
       }
       
+      # combine results into a list
       pp <- list(
         m = task$m_val,
         iteration = task$edgelist_index,
@@ -2352,6 +2059,7 @@ pp_is_parallel <- function(edgelists,
         ebr_hs = ebr_hs_pp
       )
       
+      # save results to file
       path <- paste0(
         output_folder ,
         "pp_m_",
@@ -2388,36 +2096,45 @@ pp_is_parallel <- function(edgelists,
 
 ### Sparse Models
 
+# Function to calculate in-sample predictive performance for dependent edgelists with sparse models after variable selection
 
-pp_is_sparse_parallel <- function(edgelists,
-                                  m,
-                                  parameters,
-                                  covar,
-                                  results_folder,
-                                  statistics_folder,
-                                  selected_folder,
-                                  output_folder,
-                                  num_cores,
-                                  quantile = 0.95) {
+pp_is_sparse_parallel <- function(edgelists, # list of edgelists
+                                  m, # vector of m values
+                                  parameters, # true parameters
+                                  covar, # data frame with covariates
+                                  results_folder, # folder with results
+                                  statistics_folder, # folder with statistics
+                                  selected_folder, # folder with selected variables
+                                  output_folder, # folder to save output
+                                  num_cores, # number of cores to use
+                                  quantile = 0.95 # quantile to evaluate
+                                  ) {
+  
+  # set up parallel backend
   future::plan(future::multisession, workers = num_cores)
   
+  # Set up task list
   task_list <- lapply(m, function(m_val) {
     lapply(seq_along(edgelists), function(edgelist_index) {
       list(m_val = m_val, edgelist_index = edgelist_index)
     })
   })
   
-  task_list <- unlist(task_list, recursive = FALSE)
+  task_list <- unlist(task_list, recursive = FALSE) # flatten the list
   
+  # Run tasks in parallel
   future_lapply(task_list, function(task) {
     tryCatch({
+      
+      # remify object
       reh <- remify(
-        edgelists[[task$edgelist_index]],
-        directed = TRUE,
-        model = "tie",
-        riskset = "full"
+        edgelists[[task$edgelist_index]], # edgelist
+        directed = TRUE, # directed network
+        model = "tie", # tie-oriented model
+        riskset = "full" # full riskset
       )
       
+      # load estimates, statistics and selected variables
       load(
         paste0(
           results_folder,
@@ -2447,10 +2164,11 @@ pp_is_sparse_parallel <- function(edgelists,
         )
       )
       
-      statistics_is <- statistics[1:task$m_val, , ]
+      statistics_is <- statistics[1:task$m_val, , ] # statistics for in-sample
       
-      rm(statistics)
+      rm(statistics) # remove statistics to save memory
       
+      # Predictive performance for MLE
       mle_05_pp <- predictive_performance_all(
         edgelist = edgelists[[task$edgelist_index]][1:task$m_val, ],
         covar = covar,
@@ -2463,11 +2181,14 @@ pp_is_sparse_parallel <- function(edgelists,
         quantile = quantile
       )
       
+      # Predictive performance for ABR Ridge
+      
+      # 95% HDI
       abr_hs_95_pp <- predictive_performance_all(
         edgelist = edgelists[[task$edgelist_index]][1:task$m_val, ],
         covar = covar,
         coefficients = replace(
-          output$shrink_hs$estimates$shrunk.mode,!rownames(output$shrink_hs$estimates) %in% c("baseline", selected_vars$abr_hs_95),
+          output$shrink_hs$shrunk.mode,!rownames(output$shrink_hs) %in% c("baseline", selected_vars$abr_hs_95),
           0
         ),
         reh = reh,
@@ -2475,11 +2196,12 @@ pp_is_sparse_parallel <- function(edgelists,
         quantile = quantile
       )
       
+      # abs Mode >= 0.1
       abr_hs_mode_01_pp <- predictive_performance_all(
         edgelist = edgelists[[task$edgelist_index]][1:task$m_val, ],
         covar = covar,
         coefficients = replace(
-          output$shrink_hs$estimates$shrunk.mode,!rownames(output$shrink_hs$estimates) %in% c("baseline", selected_vars$abr_hs_mode_01),
+          output$shrink_hs$shrunk.mode,!rownames(output$shrink_hs) %in% c("baseline", selected_vars$abr_hs_mode_01),
           0
         ),
         reh = reh,
@@ -2487,11 +2209,12 @@ pp_is_sparse_parallel <- function(edgelists,
         quantile = quantile
       )
       
+      # abs Median >= 0.1
       abr_hs_median_01_pp <- predictive_performance_all(
         edgelist = edgelists[[task$edgelist_index]][1:task$m_val, ],
         covar = covar,
         coefficients = replace(
-          output$shrink_hs$estimates$shrunk.mode,!rownames(output$shrink_hs$estimates) %in% c("baseline", selected_vars$abr_hs_median_01),
+          output$shrink_hs$shrunk.mode,!rownames(output$shrink_hs) %in% c("baseline", selected_vars$abr_hs_median_01),
           0
         ),
         reh = reh,
@@ -2499,11 +2222,12 @@ pp_is_sparse_parallel <- function(edgelists,
         quantile = quantile
       )
       
+      # abs Mean >= 0.1
       abr_hs_mean_01_pp <- predictive_performance_all(
         edgelist = edgelists[[task$edgelist_index]][1:task$m_val, ],
         covar = covar,
         coefficients = replace(
-          output$shrink_hs$estimates$shrunk.mode,!rownames(output$shrink_hs$estimates) %in% c("baseline", selected_vars$abr_hs_mean_01),
+          output$shrink_hs$shrunk.mode,!rownames(output$shrink_hs) %in% c("baseline", selected_vars$abr_hs_mean_01),
           0
         ),
         reh = reh,
@@ -2511,6 +2235,9 @@ pp_is_sparse_parallel <- function(edgelists,
         quantile = quantile
       )
       
+      # Predictive performance for ABR Ridge
+      
+      # 95% HDI
       abr_ridge_95_pp <- predictive_performance_all(
         edgelist = edgelists[[task$edgelist_index]][1:task$m_val, ],
         covar = covar,
@@ -2523,6 +2250,7 @@ pp_is_sparse_parallel <- function(edgelists,
         quantile = quantile
       )
       
+      # abs Mode >= 0.1
       abr_ridge_mode_01_pp <- predictive_performance_all(
         edgelist = edgelists[[task$edgelist_index]][1:task$m_val, ],
         covar = covar,
@@ -2535,6 +2263,7 @@ pp_is_sparse_parallel <- function(edgelists,
         quantile = quantile
       )
       
+      # abs Median >= 0.1
       abr_ridge_median_01_pp <- predictive_performance_all(
         edgelist = edgelists[[task$edgelist_index]][1:task$m_val, ],
         covar = covar,
@@ -2547,6 +2276,7 @@ pp_is_sparse_parallel <- function(edgelists,
         quantile = quantile
       )
       
+      # abs Mean >= 0.1
       abr_ridge_mean_01_pp <- predictive_performance_all(
         edgelist = edgelists[[task$edgelist_index]][1:task$m_val, ],
         covar = covar,
@@ -2559,7 +2289,10 @@ pp_is_sparse_parallel <- function(edgelists,
         quantile = quantile
       )
       
+      # Predictive performance for EBR HS
+      # only if m is 100 or 200
       if (task$m_val %in% c(100, 200)) {
+        # load estimates
         load(
           paste0(
             results_folder,
@@ -2571,8 +2304,9 @@ pp_is_sparse_parallel <- function(edgelists,
           )
         )
 
-        coefs_ebr_hs$Parameter <- sub("1$", "", sub("^b_", "", coefs_ebr_hs$Parameter))
+        coefs_ebr_hs$Parameter <- sub("1$", "", sub("^b_", "", coefs_ebr_hs$Parameter)) # only keep coefficients
         
+        # 95% HDI
         ebr_hs_95_pp <- predictive_performance_all(
           edgelist = edgelists[[task$edgelist_index]][1:task$m_val, ],
           covar = covar,
@@ -2585,6 +2319,7 @@ pp_is_sparse_parallel <- function(edgelists,
           quantile = quantile
         )
         
+        # abs Mode >= 0.1
         ebr_hs_mode_01_pp <- predictive_performance_all(
           edgelist = edgelists[[task$edgelist_index]][1:task$m_val, ],
           covar = covar,
@@ -2597,6 +2332,7 @@ pp_is_sparse_parallel <- function(edgelists,
           quantile = quantile
         )
         
+        # abs Median >= 0.1
         ebr_hs_median_01_pp <- predictive_performance_all(
           edgelist = edgelists[[task$edgelist_index]][1:task$m_val, ],
           covar = covar,
@@ -2609,6 +2345,7 @@ pp_is_sparse_parallel <- function(edgelists,
           quantile = quantile
         )
         
+        # abs Mean >= 0.1
         ebr_hs_mean_01_pp <- predictive_performance_all(
           edgelist = edgelists[[task$edgelist_index]][1:task$m_val, ],
           covar = covar,
@@ -2627,6 +2364,7 @@ pp_is_sparse_parallel <- function(edgelists,
         ebr_hs_mean_01_pp <- NA
       }
       
+      # Full ABR Ridge
       abr_ridge_pp <- predictive_performance_all(
         edgelist = edgelists[[task$edgelist_index]][1:task$m_val, ],
         covar = covar,
@@ -2637,6 +2375,7 @@ pp_is_sparse_parallel <- function(edgelists,
         warnings = FALSE
       )
       
+      # Combine results into a list
       pp <- list(
         m = task$m_val,
         iteration = task$edgelist_index,
@@ -2656,6 +2395,7 @@ pp_is_sparse_parallel <- function(edgelists,
         ebr_hs_mean_01 = ebr_hs_mean_01_pp
       )
       
+      # save results to file
       path <- paste0(
         output_folder ,
         "pp_m_",
@@ -2702,18 +2442,25 @@ pp_is_sparse_parallel <- function(edgelists,
 
 #### Independent
 
+# Function to calculate in-sample predictive performance for independent edgelists
 
-pp_is_independent_parallel <- function(parameters,
-                                       covar,
-                                       results_folder,
-                                       output_folder,
-                                       num_cores,
-                                       quantile = 0.95,
-                                       task_list) {
+pp_is_independent_parallel <- function(parameters, # true parameters
+                                       covar, # data frame with covariates
+                                       results_folder, # folder with results
+                                       output_folder, # folder to save output
+                                       num_cores, # number of cores to use
+                                       quantile = 0.95, # quantile to evaluate
+                                       task_list # list of tasks with edgelists
+                                       ) {
+  
+  # set up parallel backend
   future::plan(future::multisession, workers = num_cores)
   
+  # Run tasks in parallel
   future_lapply(task_list, function(task) {
     tryCatch({
+      
+      # remify object
       reh <- remify(
         task$edgelist,
         directed = TRUE,
@@ -2721,6 +2468,7 @@ pp_is_independent_parallel <- function(parameters,
         riskset = "full"
       )
       
+      # load estimates
       load(
         paste0(
           results_folder,
@@ -2732,12 +2480,14 @@ pp_is_independent_parallel <- function(parameters,
         )
       )
       
+      # calculate statistics
       statistics <- remstats(
         reh = reh,
         tie_effects = generate_formula(parameters),
         attr_actors = covar
       )
       
+      # Predictive performance for MLE
       mle_pp <- predictive_performance_all(
         edgelist = task$edgelist[1:task$m_val, ],
         covar = covar,
@@ -2747,6 +2497,7 @@ pp_is_independent_parallel <- function(parameters,
         quantile = quantile
       )
       
+      # Predictive performance for ABR Ridge
       abr_ridge_pp <- predictive_performance_all(
         edgelist = task$edgelist[1:task$m_val, ],
         covar = covar,
@@ -2757,10 +2508,11 @@ pp_is_independent_parallel <- function(parameters,
         warnings = FALSE
       )
       
+      # Predictive performance for ABR HS
       abr_hs_pp <- predictive_performance_all(
         edgelist = task$edgelist[1:task$m_val, ],
         covar = covar,
-        coefficients = output$shrink_hs$estimates$shrunk.mode,
+        coefficients = output$shrink_hs$shrunk.mode,
         reh = reh,
         statistics = statistics[1:task$m_val, , ],
         quantile = quantile,
@@ -2768,7 +2520,7 @@ pp_is_independent_parallel <- function(parameters,
       )
       
       
-      
+      # List to store results
       pp <- list(
         m = task$m_val,
         iteration = task$edgelist_index,
@@ -2777,6 +2529,7 @@ pp_is_independent_parallel <- function(parameters,
         abr_hs = abr_hs_pp
       )
       
+      # save results to file
       path <- paste0(
         output_folder ,
         "pp_m_",
@@ -2811,20 +2564,26 @@ pp_is_independent_parallel <- function(parameters,
 
 ### Sparse Models
 
+# Function to calculate in-sample predictive performance for independent edgelists with sparse models after variable selection
 
-pp_is_independent_sparse_parallel <- function(parameters,
-                                              covar,
-                                              results_folder,
-                                              selected_folder,
-                                              output_folder,
-                                              num_cores,
-                                              quantile = 0.95,
-                                              task_list) {
+pp_is_independent_sparse_parallel <- function(parameters, # true parameters
+                                              covar, # data frame with covariates
+                                              results_folder, # folder with results
+                                              selected_folder, # folder with selected variables
+                                              output_folder, # folder to save output
+                                              num_cores, # number of cores to use
+                                              quantile = 0.95, # quantile to evaluate
+                                              task_list # list of tasks with edgelists
+                                              ) {
+  
+  # set up parallel backend
   future::plan(future::multisession, workers = num_cores)
   
-  
+  # Run tasks in parallel
   future_lapply(task_list, function(task) {
     tryCatch({
+      
+      # remify object
       reh <- remify(
         task$edgelist,
         directed = TRUE,
@@ -2832,12 +2591,14 @@ pp_is_independent_sparse_parallel <- function(parameters,
         riskset = "full"
       )
       
+      # calculate statistics
       statistics_is <- remstats(
         reh = reh,
         tie_effects = generate_formula(parameters),
         attr_actors = covar
       )
       
+      # load estimates
       load(
         paste0(
           results_folder,
@@ -2848,6 +2609,8 @@ pp_is_independent_sparse_parallel <- function(parameters,
           ".RData"
         )
       )
+      
+      # load selected variables
       load(
         paste0(
           selected_folder,
@@ -2859,6 +2622,7 @@ pp_is_independent_sparse_parallel <- function(parameters,
         )
       )
       
+      # Predictive performance for MLE
       mle_05_pp <- predictive_performance_all(
         edgelist = task$edgelist,
         covar = covar,
@@ -2871,11 +2635,14 @@ pp_is_independent_sparse_parallel <- function(parameters,
         quantile = quantile
       )
       
+      # Predictive performance for ABR Ridge
+      
+      # 95% HDI
       abr_hs_95_pp <- predictive_performance_all(
         edgelist = task$edgelist,
         covar = covar,
         coefficients = replace(
-          output$shrink_hs$estimates$shrunk.mode,!rownames(output$shrink_hs$estimates) %in% c("baseline", selected_vars$abr_hs_95),
+          output$shrink_hs$shrunk.mode,!rownames(output$shrink_hs) %in% c("baseline", selected_vars$abr_hs_95),
           0
         ),
         reh = reh,
@@ -2883,11 +2650,12 @@ pp_is_independent_sparse_parallel <- function(parameters,
         quantile = quantile
       )
       
+      # abs Mode >= 0.1
       abr_hs_mode_01_pp <- predictive_performance_all(
         edgelist = task$edgelist,
         covar = covar,
         coefficients = replace(
-          output$shrink_hs$estimates$shrunk.mode,!rownames(output$shrink_hs$estimates) %in% c("baseline", selected_vars$abr_hs_mode_01),
+          output$shrink_hs$shrunk.mode,!rownames(output$shrink_hs) %in% c("baseline", selected_vars$abr_hs_mode_01),
           0
         ),
         reh = reh,
@@ -2895,11 +2663,12 @@ pp_is_independent_sparse_parallel <- function(parameters,
         quantile = quantile
       )
       
+      # abs Median >= 0.1
       abr_hs_median_01_pp <- predictive_performance_all(
         edgelist = task$edgelist,
         covar = covar,
         coefficients = replace(
-          output$shrink_hs$estimates$shrunk.mode,!rownames(output$shrink_hs$estimates) %in% c("baseline", selected_vars$abr_hs_median_01),
+          output$shrink_hs$shrunk.mode,!rownames(output$shrink_hs) %in% c("baseline", selected_vars$abr_hs_median_01),
           0
         ),
         reh = reh,
@@ -2907,11 +2676,12 @@ pp_is_independent_sparse_parallel <- function(parameters,
         quantile = quantile
       )
       
+      # abs Mean >= 0.1
       abr_hs_mean_01_pp <- predictive_performance_all(
         edgelist = task$edgelist,
         covar = covar,
         coefficients = replace(
-          output$shrink_hs$estimates$shrunk.mode,!rownames(output$shrink_hs$estimates) %in% c("baseline", selected_vars$abr_hs_mean_01),
+          output$shrink_hs$shrunk.mode,!rownames(output$shrink_hs) %in% c("baseline", selected_vars$abr_hs_mean_01),
           0
         ),
         reh = reh,
@@ -2919,6 +2689,9 @@ pp_is_independent_sparse_parallel <- function(parameters,
         quantile = quantile
       )
       
+      # Predictive performance for ABR Ridge
+      
+      # 95% HDI
       abr_ridge_95_pp <- predictive_performance_all(
         edgelist = task$edgelist,
         covar = covar,
@@ -2931,6 +2704,7 @@ pp_is_independent_sparse_parallel <- function(parameters,
         quantile = quantile
       )
       
+      # abs Mode >= 0.1
       abr_ridge_mode_01_pp <- predictive_performance_all(
         edgelist = task$edgelist,
         covar = covar,
@@ -2943,6 +2717,7 @@ pp_is_independent_sparse_parallel <- function(parameters,
         quantile = quantile
       )
       
+      # abs Median >= 0.1
       abr_ridge_median_01_pp <- predictive_performance_all(
         edgelist = task$edgelist,
         covar = covar,
@@ -2955,6 +2730,7 @@ pp_is_independent_sparse_parallel <- function(parameters,
         quantile = quantile
       )
       
+      # abs Mean >= 0.1
       abr_ridge_mean_01_pp <- predictive_performance_all(
         edgelist = task$edgelist,
         covar = covar,
@@ -2967,6 +2743,7 @@ pp_is_independent_sparse_parallel <- function(parameters,
         quantile = quantile
       )
       
+      # Combine results into a list
       pp <- list(
         m = task$m_val,
         iteration = task$edgelist_index,
@@ -2981,6 +2758,7 @@ pp_is_independent_sparse_parallel <- function(parameters,
         abr_ridge_mean_01 = abr_ridge_mean_01_pp
       )
       
+      # save results to file
       path <- paste0(
         output_folder ,
         "pp_m_",
@@ -3020,31 +2798,41 @@ pp_is_independent_sparse_parallel <- function(parameters,
 
 
 
-### 3.3.3 Out-of-Sample Predictive Performance for All Edgelists
+# Out-Of-Sample Predictive Performance
 
+## Full Models
 
-pp_oos_parallel <- function(edgelists,
-                            m,
-                            parameters,
-                            covar,
-                            results_folder,
-                            statistics_folder,
-                            output_folder,
-                            num_cores,
-                            quantile = 0.95,
-                            new = 1000) {
+# Function to calculate out-of-sample predictive performance for dependent edgelists
+
+pp_oos_parallel <- function(edgelists, # list of edgelists
+                            m, # vector of m values
+                            parameters, # true parameters
+                            covar, # data frame with covariates
+                            results_folder, # folder with results
+                            statistics_folder, # folder with statistics
+                            output_folder, # folder to save output
+                            num_cores, # number of cores to use
+                            quantile = 0.95, # quantile to evaluate
+                            new = 1000 # number of out-of-sample observations to evaluate
+                            ) {
+  
+  # set up parallel backend
   future::plan(future::multisession, workers = num_cores)
   
+  # Set up task list
   task_list <- lapply(m, function(m_val) {
     lapply(seq_along(edgelists), function(edgelist_index) {
       list(m_val = m_val, edgelist_index = edgelist_index)
     })
   })
   
-  task_list <- unlist(task_list, recursive = FALSE)
+  task_list <- unlist(task_list, recursive = FALSE) # flatten the list
   
+  # Run tasks in parallel
   future_lapply(task_list, function(task) {
     tryCatch({
+      
+      # remify object
       reh <- remify(
         edgelists[[task$edgelist_index]],
         directed = TRUE,
@@ -3052,6 +2840,7 @@ pp_oos_parallel <- function(edgelists,
         riskset = "full"
       )
       
+      # load estimates and statistics
       load(
         paste0(
           results_folder,
@@ -3071,9 +2860,10 @@ pp_oos_parallel <- function(edgelists,
         )
       )
       
-      edgelist_oos <- edgelists[[task$edgelist_index]][(task$m_val + 1):(task$m_val + new), ]
-      statistics_oos <- statistics[(task$m_val + 1):(task$m_val + new), , ]
+      edgelist_oos <- edgelists[[task$edgelist_index]][(task$m_val + 1):(task$m_val + new), ] # out-of-sample edgelist
+      statistics_oos <- statistics[(task$m_val + 1):(task$m_val + new), , ] # out-of-sample statistics
       
+      # Predictive performance for MLE
       mle_pp <- predictive_performance_all(
         edgelist = edgelist_oos,
         covar = covar,
@@ -3084,6 +2874,7 @@ pp_oos_parallel <- function(edgelists,
         warnings = FALSE
       )
       
+      # Predictive performance for ABR Ridge
       abr_ridge_pp <- predictive_performance_all(
         edgelist = edgelist_oos,
         covar = covar,
@@ -3094,17 +2885,21 @@ pp_oos_parallel <- function(edgelists,
         warnings = FALSE
       )
       
+      # Predictive performance for ABR HS
       abr_hs_pp <- predictive_performance_all(
         edgelist = edgelist_oos,
         covar = covar,
-        coefficients = output$shrink_hs$estimates$shrunk.mode,
+        coefficients = output$shrink_hs$shrunk.mode,
         reh = reh,
         statistics = statistics_oos,
         quantile = quantile,
         warnings = FALSE
       )
       
+      # Predictive performance for EBR HS
+      # only if m is 100 or 200
       if (task$m_val %in% c(100, 200)) {
+        ä# load estimates
         load(
           paste0(
             results_folder,
@@ -3127,9 +2922,10 @@ pp_oos_parallel <- function(edgelists,
           warnings = FALSE
         )
       } else {
-        ebr_hs_pp <- NA
+        ebr_hs_pp <- NA # if m is not 100 or 200, set to NA
       }
       
+      # combine results into a list
       pp <- list(
         m = task$m_val,
         iteration = task$edgelist_index,
@@ -3139,6 +2935,7 @@ pp_oos_parallel <- function(edgelists,
         ebr_hs = ebr_hs_pp
       )
       
+      # save results to file
       path <- paste0(
         output_folder,
         "pp_m_",
@@ -3170,32 +2967,40 @@ pp_oos_parallel <- function(edgelists,
 }
 
 
-### Sparse Models
+## Sparse Models
+
+# Function to calculate out-of-sample predictive performance for dependent edgelists with sparse models after variable selection
 
 
-pp_oos_sparse_parallel <- function(edgelists,
-                                   m,
-                                   parameters,
-                                   covar,
-                                   results_folder,
-                                   statistics_folder,
-                                   selected_folder,
-                                   output_folder,
-                                   num_cores,
-                                   quantile = 0.95,
-                                   new = 1000) {
+pp_oos_sparse_parallel <- function(edgelists, # list of edgelists
+                                   m, # vector of m values
+                                   parameters, # true parameters
+                                   covar, # data frame with covariates
+                                   results_folder, # folder with results
+                                   statistics_folder, # folder with statistics
+                                   selected_folder, # folder with selected variables
+                                   output_folder, # folder to save output
+                                   num_cores, # number of cores to use
+                                   quantile = 0.95, # quantile to evaluate
+                                   new = 1000 # number of out-of-sample observations to evaluate
+                                   ) {
+  
+  # set up parallel backend
   future::plan(future::multisession, workers = num_cores)
   
+  # Set up task list
   task_list <- lapply(m, function(m_val) {
     lapply(seq_along(edgelists), function(edgelist_index) {
       list(m_val = m_val, edgelist_index = edgelist_index)
     })
   })
   
-  task_list <- unlist(task_list, recursive = FALSE)
+  task_list <- unlist(task_list, recursive = FALSE) # flatten the list
   
+  # Run tasks in parallel
   future_lapply(task_list, function(task) {
     tryCatch({
+      # remify object
       reh <- remify(
         edgelists[[task$edgelist_index]],
         directed = TRUE,
@@ -3203,6 +3008,7 @@ pp_oos_sparse_parallel <- function(edgelists,
         riskset = "full"
       )
       
+      # load estimates, statistics and selected variables
       load(
         paste0(
           results_folder,
@@ -3232,11 +3038,11 @@ pp_oos_sparse_parallel <- function(edgelists,
         )
       )
       
-      edgelist_oos <- edgelists[[task$edgelist_index]][(task$m_val + 1):(task$m_val + new), ]
-      statistics_oos <- statistics[(task$m_val + 1):(task$m_val + new), , ]
+      edgelist_oos <- edgelists[[task$edgelist_index]][(task$m_val + 1):(task$m_val + new), ] # out-of-sample edgelist
+      statistics_oos <- statistics[(task$m_val + 1):(task$m_val + new), , ] # out-of-sample statistics
       rm(statistics)
       
-      
+      # Predictive performance for MLE
       mle_05_pp <- predictive_performance_all(
         edgelist = edgelist_oos,
         covar = covar,
@@ -3249,11 +3055,14 @@ pp_oos_sparse_parallel <- function(edgelists,
         quantile = quantile
       )
       
+      # Predictive performance for ABR HS
+      
+      # 95% HDI
       abr_hs_95_pp <- predictive_performance_all(
         edgelist = edgelist_oos,
         covar = covar,
         coefficients = replace(
-          output$shrink_hs$estimates$shrunk.mode,!rownames(output$shrink_hs$estimates) %in% c("baseline", selected_vars$abr_hs_95),
+          output$shrink_hs$shrunk.mode,!rownames(output$shrink_hs) %in% c("baseline", selected_vars$abr_hs_95),
           0
         ),
         reh = reh,
@@ -3261,11 +3070,12 @@ pp_oos_sparse_parallel <- function(edgelists,
         quantile = quantile
       )
       
+      # abs Mode >= 0.1
       abr_hs_mode_01_pp <- predictive_performance_all(
         edgelist = edgelist_oos,
         covar = covar,
         coefficients = replace(
-          output$shrink_hs$estimates$shrunk.mode,!rownames(output$shrink_hs$estimates) %in% c("baseline", selected_vars$abr_hs_mode_01),
+          output$shrink_hs$shrunk.mode,!rownames(output$shrink_hs) %in% c("baseline", selected_vars$abr_hs_mode_01),
           0
         ),
         reh = reh,
@@ -3273,11 +3083,12 @@ pp_oos_sparse_parallel <- function(edgelists,
         quantile = quantile
       )
       
+      # abs Median >= 0.1
       abr_hs_median_01_pp <- predictive_performance_all(
         edgelist = edgelist_oos,
         covar = covar,
         coefficients = replace(
-          output$shrink_hs$estimates$shrunk.mode,!rownames(output$shrink_hs$estimates) %in% c("baseline", selected_vars$abr_hs_median_01),
+          output$shrink_hs$shrunk.mode,!rownames(output$shrink_hs) %in% c("baseline", selected_vars$abr_hs_median_01),
           0
         ),
         reh = reh,
@@ -3285,11 +3096,12 @@ pp_oos_sparse_parallel <- function(edgelists,
         quantile = quantile
       )
       
+      # abs Mean >= 0.1
       abr_hs_mean_01_pp <- predictive_performance_all(
         edgelist = edgelist_oos,
         covar = covar,
         coefficients = replace(
-          output$shrink_hs$estimates$shrunk.mode,!rownames(output$shrink_hs$estimates) %in% c("baseline", selected_vars$abr_hs_mean_01),
+          output$shrink_hs$shrunk.mode,!rownames(output$shrink_hs) %in% c("baseline", selected_vars$abr_hs_mean_01),
           0
         ),
         reh = reh,
@@ -3297,6 +3109,9 @@ pp_oos_sparse_parallel <- function(edgelists,
         quantile = quantile
       )
       
+      # Predictive performance for ABR Ridge
+      
+      # 95% HDI
       abr_ridge_95_pp <- predictive_performance_all(
         edgelist = edgelist_oos,
         covar = covar,
@@ -3309,6 +3124,7 @@ pp_oos_sparse_parallel <- function(edgelists,
         quantile = quantile
       )
       
+      # abs Mode >= 0.1
       abr_ridge_mode_01_pp <- predictive_performance_all(
         edgelist = edgelist_oos,
         covar = covar,
@@ -3321,6 +3137,7 @@ pp_oos_sparse_parallel <- function(edgelists,
         quantile = quantile
       )
       
+      # abs Median >= 0.1
       abr_ridge_median_01_pp <- predictive_performance_all(
         edgelist = edgelist_oos,
         covar = covar,
@@ -3333,6 +3150,7 @@ pp_oos_sparse_parallel <- function(edgelists,
         quantile = quantile
       )
       
+      # abs Mean >= 0.1
       abr_ridge_mean_01_pp <- predictive_performance_all(
         edgelist = edgelist_oos,
         covar = covar,
@@ -3345,7 +3163,10 @@ pp_oos_sparse_parallel <- function(edgelists,
         quantile = quantile
       )
       
+      # Predictive performance for EBR HS
+      # only if m is 100 or 200
       if (task$m_val %in% c(100, 200)) {
+        # load estimates
         load(
           paste0(
             results_folder,
@@ -3357,8 +3178,9 @@ pp_oos_sparse_parallel <- function(edgelists,
           )
         )
 
-        coefs_ebr_hs$Parameter <- sub("1$", "", sub("^b_", "", coefs_ebr_hs$Parameter))
+        coefs_ebr_hs$Parameter <- sub("1$", "", sub("^b_", "", coefs_ebr_hs$Parameter)) # only coefficients
         
+        # 95% HDI
         ebr_hs_95_pp <- predictive_performance_all(
           edgelist = edgelist_oos,
           covar = covar,
@@ -3371,6 +3193,7 @@ pp_oos_sparse_parallel <- function(edgelists,
           quantile = quantile
         )
         
+        # abs Mode >= 0.1
         ebr_hs_mode_01_pp <- predictive_performance_all(
           edgelist = edgelist_oos,
           covar = covar,
@@ -3383,6 +3206,7 @@ pp_oos_sparse_parallel <- function(edgelists,
           quantile = quantile
         )
         
+        # abs Median >= 0.1
         ebr_hs_median_01_pp <- predictive_performance_all(
           edgelist = edgelist_oos,
           covar = covar,
@@ -3395,6 +3219,7 @@ pp_oos_sparse_parallel <- function(edgelists,
           quantile = quantile
         )
         
+        # abs Mean >= 0.1
         ebr_hs_mean_01_pp <- predictive_performance_all(
           edgelist = edgelist_oos,
           covar = covar,
@@ -3413,6 +3238,7 @@ pp_oos_sparse_parallel <- function(edgelists,
         ebr_hs_mean_01_pp <- NA
       }
       
+      # Full ABR Ridge
       abr_ridge_pp <- predictive_performance_all(
         edgelist = edgelist_oos,
         covar = covar,
@@ -3423,6 +3249,8 @@ pp_oos_sparse_parallel <- function(edgelists,
         warnings = FALSE
       )
       
+      
+      # Combine results into a list
       pp <- list(
         m = task$m_val,
         iteration = task$edgelist_index,
@@ -3442,6 +3270,7 @@ pp_oos_sparse_parallel <- function(edgelists,
         ebr_hs_mean_01 = ebr_hs_mean_01_pp
       )
       
+      # save results to file
       path <- paste0(
         output_folder ,
         "pp_m_",
@@ -3485,21 +3314,27 @@ pp_oos_sparse_parallel <- function(edgelists,
 }
 
 
-#### Independent
+## Independent
 
+# Function to calculate out-of-sample predictive performance for independent edgelists
 
-pp_oos_independent_parallel <- function(parameters,
-                                        covar,
-                                        results_folder,
-                                        output_folder,
-                                        num_cores,
-                                        quantile = 0.95,
-                                        task_list,
-                                        new = 1000) {
+pp_oos_independent_parallel <- function(parameters, # true parameters
+                                        covar, # data frame with covariates
+                                        results_folder, # folder with results
+                                        output_folder, # folder to save output
+                                        num_cores, # number of cores to use
+                                        quantile = 0.95, # quantile to evaluate
+                                        task_list, # list of tasks with edgelists
+                                        new = 1000 # number of out-of-sample observations to evaluate
+                                        ) {
+  # set up parallel backend
   future::plan(future::multisession, workers = num_cores)
   
+  # Run tasks in parallel
   future_lapply(task_list, function(task) {
     tryCatch({
+      
+      # remify object
       reh <- remify(
         task$edgelist,
         directed = TRUE,
@@ -3507,6 +3342,7 @@ pp_oos_independent_parallel <- function(parameters,
         riskset = "full"
       )
       
+      # load estimates
       load(
         paste0(
           results_folder,
@@ -3518,17 +3354,18 @@ pp_oos_independent_parallel <- function(parameters,
         )
       )
       
+      # calculate statistics
       statistics <- remstats(
         reh = reh,
         tie_effects = generate_formula(parameters),
         attr_actors = covar
       )
-      edgelist_oos <- task$edgelist[(task$m_val + 1):(task$m_val + new), ]
-      statistics_oos <- statistics[(task$m_val + 1):(task$m_val + new), , ]
+      edgelist_oos <- task$edgelist[(task$m_val + 1):(task$m_val + new), ] # out-of-sample edgelist
+      statistics_oos <- statistics[(task$m_val + 1):(task$m_val + new), , ] # out-of-sample statistics
       
-      rm(statistics)
+      rm(statistics) # remove statistics to save memory
       
-      
+      # Predictive performance for MLE
       mle_pp <- predictive_performance_all(
         edgelist = edgelist_oos,
         covar = covar,
@@ -3538,6 +3375,7 @@ pp_oos_independent_parallel <- function(parameters,
         quantile = quantile
       )
       
+      # Predictive performance for ABR Ridge
       abr_ridge_pp <- predictive_performance_all(
         edgelist = edgelist_oos,
         covar = covar,
@@ -3548,10 +3386,11 @@ pp_oos_independent_parallel <- function(parameters,
         warnings = FALSE
       )
       
+      # Predictive performance for ABR HS
       abr_hs_pp <- predictive_performance_all(
         edgelist = edgelist_oos,
         covar = covar,
-        coefficients = output$shrink_hs$estimates$shrunk.mode,
+        coefficients = output$shrink_hs$shrunk.mode,
         reh = reh,
         statistics = statistics_oos,
         quantile = quantile,
@@ -3559,7 +3398,7 @@ pp_oos_independent_parallel <- function(parameters,
       )
       
       
-      
+      # Combine results into a list
       pp <- list(
         m = task$m_val,
         iteration = task$edgelist_index,
@@ -3603,20 +3442,25 @@ pp_oos_independent_parallel <- function(parameters,
 ### Sparse Models
 
 
-pp_oos_independent_sparse_parallel <- function(parameters,
-                                               covar,
-                                               results_folder,
-                                               statistics_folder,
-                                               selected_folder,
-                                               output_folder,
-                                               num_cores,
-                                               quantile = 0.95,
-                                               new = 1000,
-                                               task_list) {
+pp_oos_independent_sparse_parallel <- function(parameters, # true parameters
+                                               covar, # data frame with covariates
+                                               results_folder, # folder with results
+                                               statistics_folder, # folder with statistics
+                                               selected_folder, # folder with selected variables
+                                               output_folder, # folder to save output
+                                               num_cores, # number of cores to use
+                                               quantile = 0.95, # quantile to evaluate
+                                               new = 1000, # number of out-of-sample observations to evaluate
+                                               task_list # list of tasks with edgelists
+                                               ) {
+  
+  # set up parallel backend
   future::plan(future::multisession, workers = num_cores)
   
+  # Run tasks in parallel
   future_lapply(task_list, function(task) {
     tryCatch({
+      # remify object
       reh <- remify(
         task$edgelist,
         directed = TRUE,
@@ -3624,6 +3468,7 @@ pp_oos_independent_sparse_parallel <- function(parameters,
         riskset = "full"
       )
       
+      # load estimates and selected variables
       load(
         paste0(
           results_folder,
@@ -3645,17 +3490,18 @@ pp_oos_independent_sparse_parallel <- function(parameters,
         )
       )
       
+      # calculate statistics
       statistics <- remstats(
         reh = reh,
         tie_effects = generate_formula(parameters),
         attr_actors = covar
       )
-      edgelist_oos <- task$edgelist[(task$m_val + 1):(task$m_val + new), ]
-      statistics_oos <- statistics[(task$m_val + 1):(task$m_val + new), , ]
+      edgelist_oos <- task$edgelist[(task$m_val + 1):(task$m_val + new), ] # out-of-sample edgelist
+      statistics_oos <- statistics[(task$m_val + 1):(task$m_val + new), , ] # out-of-sample statistics
       
-      rm(statistics)
+      rm(statistics) # remove statistics to save memory
       
-      
+      # Predictive performance for MLE
       mle_05_pp <- predictive_performance_all(
         edgelist = edgelist_oos,
         covar = covar,
@@ -3668,11 +3514,14 @@ pp_oos_independent_sparse_parallel <- function(parameters,
         quantile = quantile
       )
       
+      # Predictive performance for ABR HS
+      
+      # 95% HDI
       abr_hs_95_pp <- predictive_performance_all(
         edgelist = edgelist_oos,
         covar = covar,
         coefficients = replace(
-          output$shrink_hs$estimates$shrunk.mode,!rownames(output$shrink_hs$estimates) %in% c("baseline", selected_vars$abr_hs_95),
+          output$shrink_hs$shrunk.mode,!rownames(output$shrink_hs) %in% c("baseline", selected_vars$abr_hs_95),
           0
         ),
         reh = reh,
@@ -3680,11 +3529,12 @@ pp_oos_independent_sparse_parallel <- function(parameters,
         quantile = quantile
       )
       
+      # abs Mode >= 0.1
       abr_hs_mode_01_pp <- predictive_performance_all(
         edgelist = edgelist_oos,
         covar = covar,
         coefficients = replace(
-          output$shrink_hs$estimates$shrunk.mode,!rownames(output$shrink_hs$estimates) %in% c("baseline", selected_vars$abr_hs_mode_01),
+          output$shrink_hs$shrunk.mode,!rownames(output$shrink_hs) %in% c("baseline", selected_vars$abr_hs_mode_01),
           0
         ),
         reh = reh,
@@ -3692,11 +3542,12 @@ pp_oos_independent_sparse_parallel <- function(parameters,
         quantile = quantile
       )
       
+      # abs Median >= 0.1
       abr_hs_median_01_pp <- predictive_performance_all(
         edgelist = edgelist_oos,
         covar = covar,
         coefficients = replace(
-          output$shrink_hs$estimates$shrunk.mode,!rownames(output$shrink_hs$estimates) %in% c("baseline", selected_vars$abr_hs_median_01),
+          output$shrink_hs$shrunk.mode,!rownames(output$shrink_hs) %in% c("baseline", selected_vars$abr_hs_median_01),
           0
         ),
         reh = reh,
@@ -3704,11 +3555,12 @@ pp_oos_independent_sparse_parallel <- function(parameters,
         quantile = quantile
       )
       
+      # abs Mean >= 0.1
       abr_hs_mean_01_pp <- predictive_performance_all(
         edgelist = edgelist_oos,
         covar = covar,
         coefficients = replace(
-          output$shrink_hs$estimates$shrunk.mode,!rownames(output$shrink_hs$estimates) %in% c("baseline", selected_vars$abr_hs_mean_01),
+          output$shrink_hs$shrunk.mode,!rownames(output$shrink_hs) %in% c("baseline", selected_vars$abr_hs_mean_01),
           0
         ),
         reh = reh,
@@ -3716,6 +3568,9 @@ pp_oos_independent_sparse_parallel <- function(parameters,
         quantile = quantile
       )
       
+      # Predictive performance for ABR Ridge
+      
+      # 95% HDI
       abr_ridge_95_pp <- predictive_performance_all(
         edgelist = edgelist_oos,
         covar = covar,
@@ -3728,6 +3583,7 @@ pp_oos_independent_sparse_parallel <- function(parameters,
         quantile = quantile
       )
       
+      # abs Mode >= 0.1
       abr_ridge_mode_01_pp <- predictive_performance_all(
         edgelist = edgelist_oos,
         covar = covar,
@@ -3740,6 +3596,7 @@ pp_oos_independent_sparse_parallel <- function(parameters,
         quantile = quantile
       )
       
+      # abs Median >= 0.1
       abr_ridge_median_01_pp <- predictive_performance_all(
         edgelist = edgelist_oos,
         covar = covar,
@@ -3752,6 +3609,7 @@ pp_oos_independent_sparse_parallel <- function(parameters,
         quantile = quantile
       )
       
+      # abs Mean >= 0.1
       abr_ridge_mean_01_pp <- predictive_performance_all(
         edgelist = edgelist_oos,
         covar = covar,
@@ -3764,7 +3622,7 @@ pp_oos_independent_sparse_parallel <- function(parameters,
         quantile = quantile
       )
       
-      
+      # combine results into a list
       pp <- list(
         m = task$m_val,
         iteration = task$edgelist_index,
@@ -3779,6 +3637,7 @@ pp_oos_independent_sparse_parallel <- function(parameters,
         abr_ridge_mean_01 = abr_ridge_mean_01_pp
       )
       
+      # save results to file
       path <- paste0(
         output_folder ,
         "pp_m_",
@@ -3817,19 +3676,28 @@ pp_oos_independent_sparse_parallel <- function(parameters,
 }
 
 
-## Plot Predictive Performance
+# Plot Predictive Performance
 
-### All Coefficients
+## All Coefficients
 
+# Function to plot predictive performance for full models
 
-plot_pp <- function(pp_folder, m, num_edgelists, title = "") {
+plot_pp <- function(pp_folder, # folder with predictive performance results
+                    m, # vector of m values
+                    num_edgelists, # number of edgelists
+                    title = "" # title of the plot
+                    ) {
+  # Create empty list to store results
   results <- list()
   
+  # Fill list with results
   for (i in m) {
     for (j in 1:num_edgelists) {
-      file_path <- sprintf(paste0(pp_folder, "pp_m_%d_edgelist_%d.RData"), i, j)
+      file_path <- sprintf(paste0(pp_folder, "pp_m_%d_edgelist_%d.RData"), i, j) # file path
       if (file.exists(file_path)) {
-        load(file_path)
+        load(file_path) # load file
+        
+        # check if pp is a list and exists
         if (exists("pp") && is.list(pp)) {
           temp_df <- data.frame(
             m         = if (!is.null(pp$m))
@@ -3864,11 +3732,13 @@ plot_pp <- function(pp_folder, m, num_edgelists, title = "") {
     }
   }
   
-  final_df <- do.call(rbind, results)
+  final_df <- do.call(rbind, results) # combine list to data frame
   
+  # Summarize results
   pp_is <- final_df %>%
-    group_by(m) %>%
+    group_by(m) %>% # group by m
     summarize(
+      # calculate mean and standard error for each method
       mean_mle   = mean(mle, na.rm = TRUE),
       mean_abr_ridge = mean(abr_ridge, na.rm = TRUE),
       mean_abr_hs    = mean(abr_hs, na.rm = TRUE),
@@ -3890,6 +3760,7 @@ plot_pp <- function(pp_folder, m, num_edgelists, title = "") {
       
     )
   
+  # Reshape data for plotting
   pp_long <- pp_is %>%
     pivot_longer(
       cols = matches("^(mean|lower|upper)_(mle|abr_ridge|abr_hs|ebr_hs)$"),
@@ -3900,6 +3771,7 @@ plot_pp <- function(pp_folder, m, num_edgelists, title = "") {
     pivot_wider(names_from = stat, values_from = value) %>%
     dplyr::select(m, method, mean, lower, upper)
   
+  # labels for legend on the plot
   legend_labels <- c(
     "mle" = "MLE",
     "abr_hs" = "ABR HS",
@@ -3907,13 +3779,13 @@ plot_pp <- function(pp_folder, m, num_edgelists, title = "") {
     "ebr_hs" = "EBR HS"
   )
   
+  # colors and linetypes for each method
   method_colors <- c(
     "mle" = "#0072B2",
     "abr_hs" = "#FFA500",
     "abr_ridge" = "#3CB371",
     "ebr_hs" = "#DF00FF"
   )
-  
   method_linetypes <- c(
     "mle" = "solid",
     "abr_hs" = "dashed",
@@ -3921,7 +3793,9 @@ plot_pp <- function(pp_folder, m, num_edgelists, title = "") {
     "ebr_hs" = "dotted"
   )
   
+  # create plot
   p <- ggplot(pp_long, aes(x = m, y = mean, group = method)) +
+    # confidence intervals
     geom_ribbon(aes(
       ymin = lower,
       ymax = upper,
@@ -3929,15 +3803,24 @@ plot_pp <- function(pp_folder, m, num_edgelists, title = "") {
     ),
     alpha = 0.2,
     color = NA) +
+    # lines and points
     geom_line(aes(color = method, linetype = method), size = 1) +
     geom_point(aes(color = method), size = 1.5) +
+    
+    # log the x axis
     scale_x_log10(breaks = m) +
-    scale_color_manual(values = method_colors, labels = legend_labels) +
+    
+    # customize colors and linetypes
+    scale_color_manual(values = method_colors, labels = legend_labels) + 
     scale_fill_manual(values = method_colors, labels = legend_labels) +
     scale_linetype_manual(values = method_linetypes, labels = legend_labels) +
+    
+    # customize theme
     theme_minimal(base_size = 14) +
     theme(axis.text.x = element_text(angle = 0),
           legend.position = "bottom") +
+    
+    # customize labels
     labs(
       title = title,
       x = "Events (M)",
@@ -3957,13 +3840,17 @@ plot_pp <- function(pp_folder, m, num_edgelists, title = "") {
 
 
 plot_pp_sparse <- function(pp_folder, m, num_edgelists, title = "") {
+  
+  # Create empty list to store results
   results <- list()
+  
+  # Fill list with results
   for (i in m) {
     for (j in 1:num_edgelists) {
-      file_path <- sprintf(paste0(pp_folder, "pp_m_%d_edgelist_%d.RData"), i, j)
+      file_path <- sprintf(paste0(pp_folder, "pp_m_%d_edgelist_%d.RData"), i, j) # file path
       if (file.exists(file_path)) {
-        load(file_path)
-        if (exists("pp") && is.list(pp)) {
+        load(file_path) # load file
+        if (exists("pp") && is.list(pp)) { # check if pp is a list and exists
           temp_df <- data.frame(
             m                 = if (!is.null(pp$m))
               pp$m
@@ -4028,10 +3915,14 @@ plot_pp_sparse <- function(pp_folder, m, num_edgelists, title = "") {
       }
     }
   }
-  final_df <- do.call(rbind, results)
+  final_df <- do.call(rbind, results) # combine list to data frame
+  
+  # Summarize results
   pp_is <- final_df %>%
-    group_by(m) %>%
+    group_by(m) %>% # group by m
     summarize(
+      
+      # calculate mean and standard error for each method
       mean_abr_ridge         = mean(abr_ridge, na.rm = TRUE),
       mean_abr_hs_95         = mean(abr_hs_95, na.rm = TRUE),
       mean_abr_hs_mode_01    = mean(abr_hs_mode_01, na.rm = TRUE),
@@ -4058,6 +3949,7 @@ plot_pp_sparse <- function(pp_folder, m, num_edgelists, title = "") {
       se_mle_05              = sd(mle_05, na.rm = TRUE) / sqrt(n()),
     ) %>%
     mutate(
+      # calculate confidence intervals
       lower_abr_ridge         = mean_abr_ridge - qnorm(0.975) * se_abr_ridge,
       upper_abr_ridge         = mean_abr_ridge + qnorm(0.975) * se_abr_ridge,
       lower_abr_hs_95         = mean_abr_hs_95 - qnorm(0.975) * se_abr_hs_95,
@@ -4083,6 +3975,8 @@ plot_pp_sparse <- function(pp_folder, m, num_edgelists, title = "") {
       lower_mle_05            = mean_mle_05 - qnorm(0.975) * se_mle_05,
       upper_mle_05            = mean_mle_05 + qnorm(0.975) * se_mle_05
     )
+  
+  # Reshape data for plotting
   pp_long <- pp_is %>%
     pivot_longer(
       cols = matches("^(mean|lower|upper)_"),
@@ -4093,13 +3987,14 @@ plot_pp_sparse <- function(pp_folder, m, num_edgelists, title = "") {
     pivot_wider(names_from = stat, values_from = value) %>%
     dplyr::select(m, method, mean, lower, upper)
   
+  # labels for legend on the plot
   legend_labels <- c(
     "abr_ridge"         = "ABR Ridge (Full)",
     "abr_hs_95"           = "95% HDI (ABR HS)",
     "abr_hs_mode_01"      = "|Mode| \u2265 0.1 (ABR HS)",
     "abr_hs_median_01"    = "|Median| \u2265 0.1 (ABR HS)",
     "abr_hs_mean_01"      = "|Mean| \u2265 0.1 (ABR HS)",
-    "abr_ridge_95"        = "95%-CI (ABR Ridge)",
+    "abr_ridge_95"        = "95% HDI (ABR Ridge)",
     "abr_ridge_mode_01"   = "|Mode| \u2265 0.1 (ABR Ridge)",
     "abr_ridge_median_01" = "|Median| \u2265 0.1 (ABR Ridge)",
     "abr_ridge_mean_01"   = "|Mean| \u2265 0.1 (ABR Ridge)",
@@ -4110,6 +4005,7 @@ plot_pp_sparse <- function(pp_folder, m, num_edgelists, title = "") {
     "mle_05"              = "\u03B1 = 0.05 (MLE)"
   )
   
+  # colors for each method
   method_colors <- c(
     "abr_ridge" = "grey20",
     
@@ -4155,6 +4051,7 @@ plot_pp_sparse <- function(pp_folder, m, num_edgelists, title = "") {
     "mle_05"             = "solid"
   )
   
+  # reorder method factor levels
   pp_long$method <- factor(
     pp_long$method,
     levels = c(
@@ -4175,17 +4072,26 @@ plot_pp_sparse <- function(pp_folder, m, num_edgelists, title = "") {
     )
   )
   
+  # create plot
   p <- ggplot(pp_long, aes(x = m, y = mean, group = method)) +
-    #geom_ribbon(aes(ymin = lower, ymax = upper, fill = method), alpha = 0.2, color = NA) +
+    # line and point for each method
     geom_line(aes(color = method, linetype = method), size = 1) +
     geom_point(aes(color = method), size = 1.5) +
+    
+    # log the x axis
     scale_x_log10(breaks = m) +
+    
+    # customize colors and linetypes
     scale_color_manual(values = method_colors, labels = legend_labels) +
     scale_fill_manual(values = method_colors, labels = legend_labels) +
     scale_linetype_manual(values = method_linetypes, labels = legend_labels) +
+    
+    # customize theme
     theme_minimal(base_size = 14) +
     theme(axis.text.x = element_text(angle = 0),
           legend.position = "bottom") +
+    
+    # customize labels
     labs(
       title = title,
       x = "Events (M)",
@@ -4200,10 +4106,18 @@ plot_pp_sparse <- function(pp_folder, m, num_edgelists, title = "") {
 
 
 
-## Table Predictive Performance
+# Table Predictive Performance
+
+# Function to create a table of predictive performance results
 
 
-table_pp <- function(pp_folder, subfolders, m, num_edgelists) {
+table_pp <- function(pp_folder, # folder with predictive performance results
+                     subfolders, # subfolders with different thresholds
+                     m, # vector of m values
+                     num_edgelists # number of edgelists
+                     ) {
+  
+  # labels for the columns
   column_labels <- c(
     "mle" = "MLE",
     "abr_hs" = "ABR HS",
@@ -4211,12 +4125,14 @@ table_pp <- function(pp_folder, subfolders, m, num_edgelists) {
     "ebr_hs" = "EBR HS"
   )
   
+  # create empty list to store results
   results <- list()
   
+  # fill list with results
   for (i in m) {
     for (j in seq_len(num_edgelists)) {
       for (subdir in subfolders) {
-        # build file path
+        # file path
         file_path <- sprintf("%s%s/pp_m_%d_edgelist_%d.RData",
                              pp_folder,
                              subdir,
@@ -4227,7 +4143,7 @@ table_pp <- function(pp_folder, subfolders, m, num_edgelists) {
         
         pp <- get(load(file_path))
         if (is.list(pp)) {
-          # derive a simple label like "top5" from "01_top5"
+          # derive threshold from subdir name
           threshold <- sub(".*_", "", subdir)
           
           temp_df <- data.frame(
@@ -4247,12 +4163,13 @@ table_pp <- function(pp_folder, subfolders, m, num_edgelists) {
     }
   }
   
-  final_df <- do.call(rbind, results)
+  final_df <- do.call(rbind, results) # combine list to data frame
   
-  
+  # Summarize results
   pp_is <- final_df %>%
-    group_by(m, threshold) %>%
+    group_by(m, threshold) %>% # group by m and threshold
     summarize(
+      # calculate mean and standard error for each method
       mean_mle   = mean(mle, na.rm = TRUE),
       mean_abr_ridge = mean(abr_ridge, na.rm = TRUE),
       mean_abr_hs    = mean(abr_hs, na.rm = TRUE),
@@ -4263,6 +4180,7 @@ table_pp <- function(pp_folder, subfolders, m, num_edgelists) {
       se_ebr_hs      = sd(ebr_hs, na.rm = TRUE) / sqrt(n())
     )
   
+  # Reshape data for table
   pp_long <- pp_is %>%
     pivot_longer(
       cols = matches("^(mean|se)_(mle|abr_ridge|abr_hs|ebr_hs)$"),
@@ -4274,22 +4192,26 @@ table_pp <- function(pp_folder, subfolders, m, num_edgelists) {
     ungroup() %>%
     dplyr::select(m, method, mean, se, threshold)
   
+  # Prepare data for table
   pp_wide <- pp_long %>%
     mutate(
       method = recode(method, !!!column_labels),
+      # combine mean and se into a single string
       mean_se = if_else(
         is.na(mean) | is.na(se),
         NA_character_,
         sprintf("%.3f (%.3f)", mean, se)
       )
     ) %>%
-    dplyr::select(threshold, m, method, mean_se) %>%
-    pivot_wider(names_from   = method, values_from  = mean_se) %>%
-    arrange(factor(threshold, levels = c("top20", "top10", "top5")), m)
+    dplyr::select(threshold, m, method, mean_se) %>% # select relevant columns
+    pivot_wider(names_from   = method, values_from  = mean_se) %>% # turn to wide format
+    arrange(factor(threshold, levels = c("top20", "top10", "top5")), m) # sort by threshold and m
   
-  
+  # Create LaTeX table
   latex_table <- pp_wide %>%
-    rowwise() %>%
+    rowwise() %>% # apply row-wise operations
+    
+    # apply bold formatting to the maximum value in each row
     mutate(across(-c(threshold, m), ~ {
       mean_val <- as.numeric(str_extract(.x, "^[0-9\\.]+"))
       row_vals <- c_across(-c(threshold, m)) %>%
@@ -4315,13 +4237,18 @@ table_pp <- function(pp_folder, subfolders, m, num_edgelists) {
 ### Sparse
 
 
-table_pp_sparse <- function(pp_folder, subfolders, m, num_edgelists) {
+table_pp_sparse <- function(pp_folder, # folder with predictive performance results
+                            subfolders, # subfolders with different thresholds
+                            m, # vector of m values
+                            num_edgelists # number of edgelists
+                            ) {
+  # labels for the columns
   column_labels <- c(
     "abr_hs_95"           = "95\\% HDI (ABR HS)",
     "abr_hs_mode_01"      = "|Mode| $\\ge 0.1$ (ABR HS)",
     "abr_hs_median_01"    = "|Median| $\\ge 0.1$ (ABR HS)",
     "abr_hs_mean_01"      = "|Mean| $\\ge 0.1$ (ABR HS)",
-    "abr_ridge_95"        = "95\\%-CI (ABR Ridge)",
+    "abr_ridge_95"        = "95\\% HDI (ABR Ridge)",
     "abr_ridge_mode_01"   = "|Mode| $\\ge 0.1$ (ABR Ridge)",
     "abr_ridge_median_01" = "|Median| $\\ge 0.1$ (ABR Ridge)",
     "abr_ridge_mean_01"   = "|Mean| $\\ge 0.1$ (ABR Ridge)",
@@ -4332,12 +4259,14 @@ table_pp_sparse <- function(pp_folder, subfolders, m, num_edgelists) {
     "mle_05"              = "$\\alpha = 0.05$ (MLE)"
   )
   
+  # create empty list to store results
   results <- list()
   
+  # fill list with results
   for (i in m) {
     for (j in seq_len(num_edgelists)) {
       for (subdir in subfolders) {
-        # build file path
+        # file path
         file_path <- sprintf("%s%s/pp_m_%d_edgelist_%d.RData",
                              pp_folder,
                              subdir,
@@ -4348,7 +4277,7 @@ table_pp_sparse <- function(pp_folder, subfolders, m, num_edgelists) {
         
         pp <- get(load(file_path))
         if (is.list(pp)) {
-          # derive a simple label like "top5" from "01_top5"
+          # derive threshold from subdir name
           threshold <- sub("^[^_]+_([^_]+)_.*$", "\\1", subdir)
           
           temp_df <- data.frame(
@@ -4422,12 +4351,13 @@ table_pp_sparse <- function(pp_folder, subfolders, m, num_edgelists) {
     }
   }
   
-  final_df <- do.call(rbind, results)
+  final_df <- do.call(rbind, results) # combine list to data frame
   
   
   pp <- final_df %>%
-    group_by(m, threshold) %>%
+    group_by(m, threshold) %>% # group by m and threshold
     summarize(
+      # calculate mean and standard error for each method
       mean_mle_05            = mean(mle_05, na.rm = TRUE),
       mean_abr_hs_95         = mean(abr_hs_95, na.rm = TRUE),
       mean_abr_hs_mode_01    = mean(abr_hs_mode_01, na.rm = TRUE),
@@ -4456,6 +4386,7 @@ table_pp_sparse <- function(pp_folder, subfolders, m, num_edgelists) {
       se_ebr_hs_mean_01      = sd(ebr_hs_mean_01, na.rm = TRUE) / sqrt(n())
     )
   
+  # Summarize results
   pp_long <- pp %>%
     pivot_longer(
       cols = -c(m, threshold),
@@ -4470,18 +4401,21 @@ table_pp_sparse <- function(pp_folder, subfolders, m, num_edgelists) {
   pp_wide <- pp_long %>%
     mutate(
       method = recode(method, !!!column_labels),
+      # combine mean and se into a single string
       mean_se = if_else(
         is.na(mean) | is.na(se),
         NA_character_,
         sprintf("%.3f (%.3f)", mean, se)
       )
     ) %>%
-    dplyr::select(threshold, m, method, mean_se) %>%
-    pivot_wider(names_from   = method, values_from  = mean_se) %>%
-    arrange(factor(threshold, levels = c("top20", "top10", "top5")), m)
+    dplyr::select(threshold, m, method, mean_se) %>% # select relevant columns
+    pivot_wider(names_from   = method, values_from  = mean_se) %>% # turn to wide format
+    arrange(factor(threshold, levels = c("top20", "top10", "top5")), m) # sort by threshold and m
   
+  # Create LaTeX table
   latex_table <- pp_wide %>%
     rowwise() %>%
+    # apply bold formatting to the maximum value in each row
     mutate(across(-c(threshold, m), ~ {
       mean_val <- as.numeric(str_extract(.x, "^[0-9\\.]+"))
       row_vals <- c_across(-c(threshold, m)) %>%
@@ -4506,18 +4440,27 @@ table_pp_sparse <- function(pp_folder, subfolders, m, num_edgelists) {
 
 ## Independent
 
+# Function to create a table of predictive performance results for independent data
 
-table_pp_independent <- function(pp_folder, subfolders, m, num_edgelists) {
+table_pp_independent <- function(pp_folder, # folder with predictive performance results
+                                 subfolders, # subfolders with different thresholds
+                                 m, # vector of m values
+                                 num_edgelists # number of edgelists
+                                 ) {
+  
+  # labels for the columns
   column_labels <- c("mle" = "MLE",
                      "abr_hs" = "ABR HS",
                      "abr_ridge" = "ABR Ridge")
   
+  # create empty list to store results
   results <- list()
   
+  # fill list with results
   for (i in m) {
     for (j in seq_len(num_edgelists)) {
       for (subdir in subfolders) {
-        # build file path
+        # file path
         file_path <- sprintf("%s%s/pp_m_%d_edgelist_%d.RData",
                              pp_folder,
                              subdir,
@@ -4526,9 +4469,9 @@ table_pp_independent <- function(pp_folder, subfolders, m, num_edgelists) {
         if (!file.exists(file_path))
           next
         
-        pp <- get(load(file_path))
+        pp <- get(load(file_path)) # load the data
         if (is.list(pp)) {
-          # derive a simple label like "top5" from "01_top5"
+          # derive threshold from subdir name
           threshold <- sub(".*_", "", subdir)
           
           temp_df <- data.frame(
@@ -4547,9 +4490,9 @@ table_pp_independent <- function(pp_folder, subfolders, m, num_edgelists) {
     }
   }
   
-  final_df <- do.call(rbind, results)
+  final_df <- do.call(rbind, results) # combine list to data frame
   
-  
+  # Summarize results
   pp_is <- final_df %>%
     group_by(m, threshold) %>%
     summarize(
@@ -4561,6 +4504,7 @@ table_pp_independent <- function(pp_folder, subfolders, m, num_edgelists) {
       se_abr_hs      = sd(abr_hs, na.rm = TRUE) / sqrt(n())
     )
   
+  # Reshape data for table
   pp_wide <- pp_is %>%
     pivot_longer(
       cols = matches("^(mean|se)_(mle|abr_ridge|abr_hs)$"),
@@ -4572,19 +4516,23 @@ table_pp_independent <- function(pp_folder, subfolders, m, num_edgelists) {
     ungroup() %>%
     dplyr::select(m, method, mean, se, threshold)
   
+  # Create LaTeX table
   latex_table <- pp_wide %>%
     mutate(
       method = recode(method, !!!column_labels),
+      # combine mean and se into a single string
       mean_se = if_else(
         is.na(mean) | is.na(se),
         NA_character_,
         sprintf("%.3f (%.3f)", mean, se)
       )
     ) %>%
-    dplyr::select(threshold, m, method, mean_se) %>%
-    pivot_wider(names_from   = method, values_from  = mean_se) %>%
-    arrange(factor(threshold, levels = c("top20", "top10", "top5")), m) %>%
+    dplyr::select(threshold, m, method, mean_se) %>% # select relevant columns
+    pivot_wider(names_from   = method, values_from  = mean_se) %>% # turn to wide format
+    arrange(factor(threshold, levels = c("top20", "top10", "top5")), m) %>% # sort by threshold and m
     rowwise() %>%
+    
+    # apply bold formatting to the maximum value in each row
     mutate(across(-c(threshold, m), ~ {
       mean_val <- as.numeric(str_extract(.x, "^[0-9\\.]+"))
       row_vals <- c_across(-c(threshold, m)) %>%
@@ -4610,25 +4558,33 @@ table_pp_independent <- function(pp_folder, subfolders, m, num_edgelists) {
 ### Sparse
 
 
-table_pp_sparse_independent <- function(pp_folder, subfolders, m, num_edgelists) {
+table_pp_sparse_independent <- function(pp_folder, # folder with predictive performance results
+                                        subfolders, # subfolders with different thresholds
+                                        m, # vector of m values
+                                        num_edgelists # number of edgelists
+                                        ) {
+  
+  # labels for the columns
   column_labels <- c(
     "abr_hs_95"           = "95\\% HDI (ABR HS)",
     "abr_hs_mode_01"      = "|Mode| $\\ge 0.1$ (ABR HS)",
     "abr_hs_median_01"    = "|Median| $\\ge 0.1$ (ABR HS)",
     "abr_hs_mean_01"      = "|Mean| $\\ge 0.1$ (ABR HS)",
-    "abr_ridge_95"        = "95\\%-CI (ABR Ridge)",
+    "abr_ridge_95"        = "95\\% HDI (ABR Ridge)",
     "abr_ridge_mode_01"   = "|Mode| $\\ge 0.1$ (ABR Ridge)",
     "abr_ridge_median_01" = "|Median| $\\ge 0.1$ (ABR Ridge)",
     "abr_ridge_mean_01"   = "|Mean| $\\ge 0.1$ (ABR Ridge)",
     "mle_05"              = "$\\alpha = 0.05$ (MLE)"
   )
   
-  results <- list()
+  # create empty list to store results
+  results <- list() 
   
+  # fill list with results
   for (i in m) {
     for (j in seq_len(num_edgelists)) {
       for (subdir in subfolders) {
-        # build file path
+        # file path
         file_path <- sprintf("%s%s/pp_m_%d_edgelist_%d.RData",
                              pp_folder,
                              subdir,
@@ -4639,7 +4595,7 @@ table_pp_sparse_independent <- function(pp_folder, subfolders, m, num_edgelists)
         
         pp <- get(load(file_path))
         if (is.list(pp)) {
-          # derive a simple label like "top5" from "01_top5"
+          # derive threshold from subdir name
           threshold <- sub("^[^_]+_([^_]+)_.*$", "\\1", subdir)
           
           temp_df <- data.frame(
@@ -4697,12 +4653,13 @@ table_pp_sparse_independent <- function(pp_folder, subfolders, m, num_edgelists)
     }
   }
   
-  final_df <- do.call(rbind, results)
+  final_df <- do.call(rbind, results) # combine list to data frame
   
-  
+  # Summarize results
   pp <- final_df %>%
-    group_by(m, threshold) %>%
+    group_by(m, threshold) %>% # group by m and threshold
     summarize(
+      # calculate mean and standard error for each method
       mean_mle_05            = mean(mle_05, na.rm = TRUE),
       mean_abr_hs_95         = mean(abr_hs_95, na.rm = TRUE),
       mean_abr_hs_mode_01    = mean(abr_hs_mode_01, na.rm = TRUE),
@@ -4723,6 +4680,7 @@ table_pp_sparse_independent <- function(pp_folder, subfolders, m, num_edgelists)
       se_abr_ridge_mean_01   = sd(abr_ridge_mean_01, na.rm = TRUE) / sqrt(n())
     )
   
+  # Reshape data for table
   pp_wide <- pp %>%
     pivot_longer(
       cols = -c(m, threshold),
@@ -4734,19 +4692,22 @@ table_pp_sparse_independent <- function(pp_folder, subfolders, m, num_edgelists)
     ungroup() %>%
     dplyr::select(m, method, mean, se, threshold)
   
+  # Create LaTeX table
   latex_table <- pp_wide %>%
     mutate(
       method = recode(method, !!!column_labels),
+      # combine mean and se into a single string
       mean_se = if_else(
         is.na(mean) | is.na(se),
         NA_character_,
         sprintf("%.3f (%.3f)", mean, se)
       )
     ) %>%
-    dplyr::select(threshold, m, method, mean_se) %>%
-    pivot_wider(names_from   = method, values_from  = mean_se) %>%
-    arrange(factor(threshold, levels = c("top20", "top10", "top5")), m) %>%
+    dplyr::select(threshold, m, method, mean_se) %>% # select relevant columns
+    pivot_wider(names_from   = method, values_from  = mean_se) %>% # turn to wide format
+    arrange(factor(threshold, levels = c("top20", "top10", "top5")), m) %>% # sort by threshold and m
     rowwise() %>%
+    # apply bold formatting to the maximum value in each row
     mutate(across(-c(threshold, m), ~ {
       mean_val <- as.numeric(str_extract(.x, "^[0-9\\.]+"))
       row_vals <- c_across(-c(threshold, m)) %>%
@@ -4773,17 +4734,24 @@ table_pp_sparse_independent <- function(pp_folder, subfolders, m, num_edgelists)
 
 # Calculate Statistics
 
+# Function to calculate statistics for each edgelist in parallel
 
-calculate_statistics_parallel <- function(edgelists,
-                                          parameters,
-                                          covar,
-                                          results_folder,
-                                          num_cores) {
+
+calculate_statistics_parallel <- function(edgelists, # list of edgelists
+                                          parameters, # true parameters
+                                          covar, # data frame with covariates
+                                          results_folder, # folder to save results
+                                          num_cores # number of cores to use
+                                          ) {
+  
+  # set up parallel processing
   future::plan(future::multisession, workers = num_cores)
   
-  
+  # run the remify and remstats functions in parallel
   future_lapply(seq_along(edgelists), function(idx) {
     tryCatch({
+      
+      # remify the edgelist and calculate statistics
       reh <- remify(
         edgelists[[idx]],
         directed = TRUE,
@@ -4796,6 +4764,7 @@ calculate_statistics_parallel <- function(edgelists,
         attr_actors = covar
       )
       
+      # save the statistics
       file_path <- paste0(results_folder,
                           "06_statistics/statistics_edgelist_",
                           idx,
