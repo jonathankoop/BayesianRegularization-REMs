@@ -11,6 +11,8 @@ library(remstats)
 library(remstimate)
 library(shrinkem)
 library(brms)
+library(reshape2)
+library(patchwork)
 
 source("../01_functions/functions.R")
 load("../../Data/02_application/Data_Popular_100.RData")
@@ -1100,6 +1102,6 @@ combined_plot <- (
 combined_plot <- combined_plot +
   plot_annotation(tag_levels = "A")
 
-ggsave("../../Plots/04_application/application_plot.png", plot = combined_plot, width = 10, height = 8, dpi = 300)
+ggsave("../../Output/02_plots/04_application/application_plot.png", plot = combined_plot, width = 10, height = 8, dpi = 300)
 
 ```
