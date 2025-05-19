@@ -53,7 +53,7 @@ The datasets were generated using the following effects:
 -   **Endogenous effects**: 3 non-zero effects (*reciprocity*, *indegreeSender*, and *outdegreeReceiver*) from the `remstats` package.
 -   **Exogenous effects**: 12 non-zero *Min* and *Max* effects from 6 exogenous covariates (3 continuous and 3 binary) with effects of varying strengths
 
-Using the `remulate` package, dyads were sampled iteratively from a fixed risk set of 2,450 possible possible sender-receiver pairs.
+Using the `remulate` package, dyads were sampled iteratively from a fixed risk set of 2,450 possible sender-receiver pairs.
 
 The directory additionally includes the following files:
 
@@ -142,19 +142,26 @@ The results can be reproduced by running the script as outlined in the steps bel
     cmdstanr::install_cmdstan()
     ```
 
-3.  Open and run the R script `Script/02_analyses/01_generating_data.qmd`. This script generates the data frame with covariates `covar.RData` and the list of data-generating parameters `parameters.RData` for the simulation study. Following this, using the `remulate` and `future` packages, the script generates the datasets for the simulation study. The datasets are saved in `Data/01_simulation/01_edgelists_dependent` and `Data/01_simulation/01_edgelists_independent`. Lastly bias and variance of the estimates from the MLE models are evaluated and saved in tables in `Output/03_tables` and plots in `Output/02_plots/01_coefficient_plots`.\
+    I have noticed that `renv` may fail to install the `cmdstanr` package. In case there is no package called `cmdstanr`, please install it by running:
+    
+    ``` r
+    install.packages("cmdstanr", repos = c('https://stan-dev.r-universe.dev', getOption("repos")))
+    ```
+    
+
+4.  Open and run the R script `Script/02_analyses/01_generating_data.qmd`. This script generates the data frame with covariates `covar.RData` and the list of data-generating parameters `parameters.RData` for the simulation study. Following this, using the `remulate` and `future` packages, the script generates the datasets for the simulation study. The datasets are saved in `Data/01_simulation/01_edgelists_dependent` and `Data/01_simulation/01_edgelists_independent`. Lastly bias and variance of the estimates from the MLE models are evaluated and saved in tables in `Output/03_tables` and plots in `Output/02_plots/01_coefficient_plots`.\
     **Note:** Depending on the number of available cores, the script will take considerable time to run. With the specifications mentioned above, it took approximately **5 hours** to generate the data.
 
-4.  Run the script in `Script/02_analyses/02a_estimating_models_dependent.qmd` and `Script/02_analyses/02b_estimating_models_independent.qmd` to estimate the MLE, ABR and EBR models on the dependent and independent datasets, respectively. The results are saved in `Output/01_result_files/01a_estimates_dependent`, `Output/01b_result_files/01b_estimates_ebr` and `Output/01_result_files/01c_estimates_independent`.\
+5.  Run the script in `Script/02_analyses/02a_estimating_models_dependent.qmd` and `Script/02_analyses/02b_estimating_models_independent.qmd` to estimate the MLE, ABR and EBR models on the dependent and independent datasets, respectively. The results are saved in `Output/01_result_files/01a_estimates_dependent`, `Output/01b_result_files/01b_estimates_ebr` and `Output/01_result_files/01c_estimates_independent`.\
     **Note:** The estimation of the models, particularly that of the EBR models using `brms`, will take considerable time to run. With the specifications mentioned above, it took multiple days to estimate all models.
 
-5.  Run the script in `Script/02_analyses/03a_selecting_variables_dependent.qmd` and `Script/02_analyses/03b_selecting_variables_independent.qmd` to select the variables using the explored selection criteria and explore that selection through the computation of the discovery rates, distance metrics and Matthews' correlation coefficient (MCC). To that end, the script also generates plots and tables for the results. The results are saved in `Output/01_result_files/02a_selection_dependent`, `Output/01_result_files/02b_selection_independent`, `Output/01_result_files/03a_discovery_rates_dependent`, `Output/01_result_files/03b_discovery_rates_independent`, and `Output/02_plots/02_variable_selection` and `Output/03_tables`.\
+6.  Run the script in `Script/02_analyses/03a_selecting_variables_dependent.qmd` and `Script/02_analyses/03b_selecting_variables_independent.qmd` to select the variables using the explored selection criteria and explore that selection through the computation of the discovery rates, distance metrics and Matthews' correlation coefficient (MCC). To that end, the script also generates plots and tables for the results. The results are saved in `Output/01_result_files/02a_selection_dependent`, `Output/01_result_files/02b_selection_independent`, `Output/01_result_files/03a_discovery_rates_dependent`, `Output/01_result_files/03b_discovery_rates_independent`, and `Output/02_plots/02_variable_selection` and `Output/03_tables`.\
     **Note:** The selection of variables, i.e., the first code chunk takes moderate time to run (\~20-30 minutes). After the selection, the script will be fast to run.
 
-6.  Run the script in `Script/02_analyses/04a_predicting_performance_dependent.qmd` and `Script/02_analyses/04b_predicting_performance_independent.qmd` to evaluate the predictive performance of the models. The results are saved in `Output/01_result_files/04a_predictive_performance_is_dependent`, `Output/01_result_files/04b_predictive_performance_oos_dependent`, `Output/01_result_files/04c_predictive_performance_is_independent`, `Output/01_result_files/04d_predictive_performance_oos_independent`, `Output/02_plots/03_predictive_performance` and `Output/03_tables`.\
+7.  Run the script in `Script/02_analyses/04a_predicting_performance_dependent.qmd` and `Script/02_analyses/04b_predicting_performance_independent.qmd` to evaluate the predictive performance of the models. The results are saved in `Output/01_result_files/04a_predictive_performance_is_dependent`, `Output/01_result_files/04b_predictive_performance_oos_dependent`, `Output/01_result_files/04c_predictive_performance_is_independent`, `Output/01_result_files/04d_predictive_performance_oos_independent`, `Output/02_plots/03_predictive_performance` and `Output/03_tables`.\
     **Note:** The computation of the predictive performance metrics takes multiple hours to run. After the computation, the plots and tables are generated quickly.
 
-7.  Run the script in `Script/02_analyses/05_application.qmd` to estimate the models on the Spotify collaboration data, illustrate variable selection and evaluate the predictive performance. The resulting estimates are saved in `Output/01_result_files/05_application` and the plot in `Output/02_plots/04_application`. 
+8.  Run the script in `Script/02_analyses/05_application.qmd` to estimate the models on the Spotify collaboration data, illustrate variable selection and evaluate the predictive performance. The resulting estimates are saved in `Output/01_result_files/05_application` and the plot in `Output/02_plots/04_application`. 
   **Note:** The estimation of the models using MLE and ABR is fast, however, the estimation of the EBR models using `brms` will take considerable time to run (approximately 5 hours).
   
 ## Ethics and Privacy
