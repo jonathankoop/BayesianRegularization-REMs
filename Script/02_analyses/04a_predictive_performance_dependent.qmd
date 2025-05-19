@@ -62,7 +62,11 @@ for (i in seq_along(files)) {
 # Compute Statistics
 
 ```{r}
-calculate_statistics_parallel(edgelists, parameters, covar, results_folder, num_cores = 20)
+calculate_statistics_parallel(edgelists = edgelists,
+                              parameters = parameters,
+                              covar = covar,
+                              results_folder = "../../Output/01_result_files/",
+                              num_cores = 20)
 ```
 
 # Predictive Performance In-Sample
