@@ -161,6 +161,8 @@ The results can be reproduced by running the script as outlined in the steps bel
 
 Ethics approval was granted by [Ethics Review Board of the Faculty of Social & Behavioural Sciences at Utrecht University](https://ferb.sites.uu.nl). The ethical approval case numbers are 24-2053, 24-2054, and 24-2057.
 
+Due to the synthetic nature of the data used in the simulation study, no privacy concerns are relevant. The simulated data is generated from a known model and does not contain any real-world personal data.
+
 By using the Spotify collaboration data, we acknowledge that the data is publicly available and does not contain any personally identifiable information. The data was collected from the Spotify API and is used in accordance with Spotify's terms of service.
 
 ## License
