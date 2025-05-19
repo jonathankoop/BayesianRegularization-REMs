@@ -3,6 +3,20 @@ title: "Estimating the Models"
 format: html
 ---
 
+# Preparations
+
+## Source Functions
+
+To import all custom functions, we need to source the `functions.R` file. This file contains all the functions used in this project.
+
+```{r}
+source("../01_functions/functions.R")
+```
+
+## Load Packages
+
+Additionally, we need to load the required packages.
+
 ```{r}
 library(remify)
 library(remstats)
@@ -18,13 +32,18 @@ library(knitr)
 library(kableExtra)
 ```
 
+## Load True Parameters and Covariates
+
+Next, we load the true parameters and covariates used in the simulation. These are stored in the `covar.RData` and `parameters.RData` files, respectively.
+
 ```{r}
-source("../01_functions/functions.R")
 load("../../Data/01_simulation/covar.RData")
 load("../../Data/01_simulation/parameters.RData")
 ```
 
-# Load and Combine edgelists
+## Load and Combine edgelists
+
+Lastly, we load and combine the edgelists generated in `01_generating_data.qmd`.
 
 ```{r}
 edgelists <- list()
@@ -41,7 +60,9 @@ for (i in seq_along(files)) {
 }
 ```
 
-## Run Function
+# Estimating REMs
+
+Now we can estimate the REMs using the `estimate_edgelists_parallel` function. This function estimates the models in parallel, which is useful for large datasets. Within the function, MLE, ABR Ridge and ABR Horseshoe are estimated. The function also saves the results in the specified folder.
 
 ```{r}
 # Define the expected m values and edgelist indices
@@ -139,7 +160,6 @@ task_list <- lapply(m_values, function(m_val) {
   })
 })
 task_list <- unlist(task_list, recursive = FALSE)
-#task_list <- task_list[1:25]
 ```
 
 ```{r}
@@ -152,6 +172,8 @@ t2 <- Sys.time()
 ```
 
 # Evaluate Estimates
+
+Next, we can evaluate the estimates. For this we first extract the estimates and store them in a single data frame. Then we can assess the bias and variance of the estimates.
 
 ## Extract Estimates
 
@@ -212,6 +234,8 @@ var(bias_ebr_hs$data$bias_ebr_hs, na.rm = T)
 
 ### Combine into LaTeX Table
 
+The bias and variance is then combined into a LaTeX table
+
 ```{r}
 bias_all <- bind_rows(
   bias_mle$summary        %>% rename(mean = bias_mle_mean,   var = bias_mle_var)   %>% mutate(method = "mle"),
@@ -219,8 +243,8 @@ bias_all <- bind_rows(
   bias_abr_ridge$summary  %>% rename(mean = bias_abr_ridge_mean, var = bias_abr_ridge_var) %>% mutate(method = "abr_ridge"),
   bias_ebr_hs$summary     %>% rename(mean = bias_ebr_hs_mean, var = bias_ebr_hs_var) %>% mutate(method = "ebr_hs")
 ) %>%
-  mutate(label = sprintf("%.3f (%.2f)", mean, var)) %>%   # single formatting step
-  dplyr::select(m, method, label) %>%                            # keep only what we need
+  mutate(label = sprintf("%.3f (%.2f)", mean, var)) %>%  # format bias and variance
+  dplyr::select(m, method, label) %>% # only keep relevant columns
   pivot_wider(
     names_from  = method,
     values_from = label
@@ -239,6 +263,8 @@ save(bias_all, file= "../../Output/03_tables/table_bias_dependent.tex")
 
 
 # Plot Estimates
+
+We additionally plot the estimates, to see the direction of the bias and the variance of the estimates. The plots are generated for the MLE, ABR with Horseshoe and ABR with Ridge.
 
 ## Define M Values to Plot
 

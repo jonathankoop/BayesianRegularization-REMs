@@ -3,6 +3,20 @@ title: "Estimating the Models"
 format: html
 ---
 
+# Preparations
+
+## Source Functions
+
+To import all custom functions, we need to source the `functions.R` file. This file contains all the functions used in this project.
+
+```{r}
+source("../01_functions/functions.R")
+```
+
+## Load Packages
+
+Additionally, we need to load the required packages.
+
 ```{r}
 library(remify)
 library(remstats)
@@ -18,13 +32,18 @@ library(knitr)
 library(kableExtra)
 ```
 
+## Load True Parameters and Covariates
+
+Next, we load the true parameters and covariates used in the simulation. These are stored in the `covar.RData` and `parameters.RData` files, respectively.
+
 ```{r}
-source("../01_functions/functions.R")
 load("../../Data/01_simulation/covar.RData")
 load("../../Data/01_simulation/parameters.RData")
 ```
 
-## Run Function
+# Estimating REMs
+
+Now we can estimate the REMs using the `estimate_edgelists_independent` function. This function estimates the models in parallel, which is useful for large datasets. Within the function, MLE, ABR Ridge and ABR Horseshoe are estimated. The function also saves the results in the specified folder.
 
 ```{r}
 # Define the expected m values and edgelist indices
@@ -83,6 +102,10 @@ t2 -t1
 ```
 
 # Evaluate Estimates
+
+Next, we can evaluate the estimates. For this we first extract the estimates and store them in a single data frame. Then we can assess the bias and variance of the estimates.
+
+## Extract Estimates
 
 ```{r}
 t1 <- Sys.time()
@@ -143,6 +166,8 @@ save(bias_all, file= "../../Output/03_tables/table_bias_independent.tex")
 
 
 # Plot Estimates
+
+We additionally plot the estimates, to see the direction of the bias and the variance of the estimates. The plots are generated for the MLE, ABR with Horseshoe and ABR with Ridge.
 
 ## Define M Values to Plot
 

@@ -68,15 +68,15 @@ The folder `02_application` contains the data used in the empirical application.
 
 -   `covar_spotify.RData`: This file contains a data frame with the exogenous covariates of the 100 artists. These include gender, country of origin, popularity, and age.
 
-## `Output`
+### `Output`
 
 The `Output` folder contains the results of the analyses. It is divided into three subfolders.
 
-### `01_result_files`
+#### `01_result_files`
 
 This folder contains the result files of the analyses. The results are stored in `.RData` and include the estimates of the models, the selected variables following the explored selection criteria, the discovery rates, the distance metrics, Matthews' correlation coefficient (MCC), and the predictive performance metrics. Since the results are not nicely formatted, they are summarized into plots and tables in the next two folders.
 
-### `02_plots`
+#### `02_plots`
 
 This folder contains the plots of the results. The plots are stored in `.png` format and stored in the following subfolders:
 
@@ -86,19 +86,19 @@ This folder contains the plots of the results. The plots are stored in `.png` fo
 
 -   `03_predictive_performance`: This folder contains plots comparing the predictive performance of full models (including MLE, ABR and EBR) and sparse models after applying the explored selection criteria. Plots are created for both in-sample (everything starting with `pp_is`) and out-of-sample (everything starting with `pp_oos`) predictive performance metrics.
 
-### `03_tables`
+#### `03_tables`
 
 This folder contains the tables of the results. The tables are stored in `.csv` format and include the bias and variance of the estimates from the models, the discovery rates, the distance metrics, Matthews' correlation coefficient (MCC), and the predictive performance metrics. The tables are in the `.tex` format.
 
-## `Script`
+### `Script`
 
 The `Script` folder contains the R scripts used in the analyses. It is divided into two subfolders: `01_functions`, where the functions are stored, and `02_analyses`, which contains the scripts for the analyses sourcing the functions from `01_functions`. Further information about the Script can be found in *Reproducing Results* below.
 
-## `renv` and `renv.lock`
+### `renv` and `renv.lock`
 
 The `renv` folder and the `renv.lock` file contain information about the R environment used in the analyses. Through the renv package, the R environment can be restored to the same state as when the analyses were run.
 
-## `Requirements.md`
+### `Requirements.md`
 
 The `Requirements.md` file contains the software requirements and refers to the `renv` file that contains the package versions used in the analyses.
 

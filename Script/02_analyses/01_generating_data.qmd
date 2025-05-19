@@ -7,10 +7,15 @@ format: html
 
 ## Source Functions
 
+To import all custom functions, we need to source the `functions.R` file. This file contains all the functions used in this project.
+
 ```{r}
 source("../01_functions/functions.R")
 ```
 
+## Load Packages
+
+Additionally, we need to load the required packages. The `remulate` package is used to generate the dependent edgelists, while the `MASS` package is used to generate the exogenous variables. The `future` and `future.apply` packages are used for parallel processing.
 
 ```{r}
 library(remulate)
@@ -20,7 +25,95 @@ library(future)
 library(future.apply)
 ```
 
-## Generate Exogenous Variables
+## Set Up Parameter List
+
+We first create a list of true parameters for the simulation. This list will be needed later to evaluate the capability of the estimation methods to recover the true parameters.
+
+```{r}
+# Vector with small, moderate, and large effect sizes
+(effect_sizes <- log(c(1.22, 1.86, 3.00)))
+
+# List of parameters
+parameters <- list(
+  "baseline" = -8,
+  
+  
+  # endogenous
+  "indegreeSender" = 0.7,
+  "reciprocity" = 0.15,
+  "outdegreeReceiver" = -0.45,
+  
+  
+  
+  "indegreeReceiver" = 0,
+  "outdegreeSender" = 0,
+  "totaldegreeSender" = 0,
+  "totaldegreeReceiver" = 0,
+  "otp" = 0,
+  "itp" = 0,
+  "isp" = 0,
+  "psABBA" = 0,
+  "psABBY" = 0,
+  "psABXA" = 0,
+  "psABXB" = 0,
+  "psABXY" = 0,
+  "psABAY" = 0,
+  "psABAB" = 0,
+  "rrankSend" = 0,
+  "rrankReceive" = 0,
+  "recencyContinue" = 0,
+  "recencySendSender" = 0,
+  "recencyReceiveReceiver" = 0,
+  "recencySendReceiver" = 0,
+  "recencyReceiveSender" = 0,
+  "osp" = 0,
+  "inertia" = 0,
+  
+  # exogenous
+  # numeric
+  "minimum_z1" = effect_sizes[1],
+  "maximum_z1" = effect_sizes[1],
+  
+  "minimum_z2" = effect_sizes[2],
+  "maximum_z2" = effect_sizes[2],
+  
+  "minimum_z3" = effect_sizes[3],
+  "maximum_z3" = effect_sizes[3],
+  
+  # categorical
+  "same_z4" = effect_sizes[1],
+  "same_z5" = effect_sizes[2],
+  "same_z6" = effect_sizes[3],
+  
+  
+  # unrelated exogenous
+  "minimum_z7" = 0,
+  "maximum_z7" = 0,
+  
+  "minimum_z8" = 0,
+  "maximum_z8" = 0,
+  
+  "minimum_z9" = 0,
+  "maximum_z9" = 0,
+  
+  "minimum_z10" = 0,
+  "maximum_z10" = 0,
+  
+  "minimum_z11" = 0,
+  "maximum_z11" = 0,
+  
+  "same_z12" = 0,
+  "same_z13" = 0,
+  "same_z14" = 0,
+  "same_z15" = 0,
+  "same_z16" = 0
+)
+```
+
+
+# Generate Exogenous Variables
+
+To generate the exogenous variables, we first create a covariance matrix for the continuous variables. The continuous variables are generated using the `mvrnorm` function from the `MASS` package. The binary variables are generated using the `sample` function.
 
 ```{r}
 RNGkind("L'Ecuyer-CMRG")
@@ -66,11 +159,11 @@ covar <- data.frame(
 save(covar, file = "../../Data/01_simulation/covar.RData")
 ```
 
-## Set Up Effects
+# Set Up Effects
+
+Then we set up the effects for the simulation. The `remulate` package is used to generate the dependent edgelists. The `effects` object contains all the effects that will be used in the simulation. The `covar` object contains the exogenous variables that will be used in the simulation.
 
 ```{r}
-(effect_sizes <- log(c(1.22, 1.86, 3.00)))
-
 effects <- ~ remulate::baseline(-8) +
   remulate::indegreeSender(0.7, scaling = "std") +
   remulate::reciprocity(0.15, scaling = "std") +
@@ -124,9 +217,13 @@ effects <- ~ remulate::baseline(-8) +
   remulate::same(0, variable = "z16", attr_actors = covar)
 ```
 
-## Generate Edgelists
+# Generate Edgelists
 
-### Dependent
+## Dependent
+
+Below, the dependent data is generated. Here, we use the `remulateTie` function from the `remulate` package to generate the edgelists. The `remulateTie` function takes the effects, actors, events, and time as arguments. The `actors` argument specifies the number of actors in the simulation, while the `events` argument specifies the number of events to be generated. The `time` argument specifies the time period for which the data is generated.
+
+Each generated edgelist contains 7400 events. This number is chosen since the largest evaluated sample size is $M=6400$, and for the evaluation of out-of-sample performance, the next 1000 events were used.
 
 ```{r}
 RNGkind("Mersenne-Twister")
@@ -147,7 +244,9 @@ for (i in 1:100) {
 }
 ```
 
-### Independent
+## Independent
+
+Due to computational run time, the independent edgelists are generated in parallel. The `generate_edgelists_parallel` function is used to generate the edgelists in parallel. The full function can be found in the `functions.R` file.
 
 ```{r}
 m <- c(100, 200, 400, 800, 1600, 3200, 6400)

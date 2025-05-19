@@ -3,7 +3,19 @@ title: "Selecting Variables"
 format: html
 ---
 
-# Load in Libraries
+# Preparations
+
+## Source Functions
+
+To import all custom functions, we need to source the `functions.R` file. This file contains all the functions used in this project.
+
+```{r}
+source("../01_functions/functions.R")
+```
+
+## Load Packages
+
+Additionally, we need to load the required packages.
 
 ```{r}
 library(remify)
@@ -21,14 +33,18 @@ library(knitr)
 library(kableExtra)
 ```
 
-# Load in Functions and Parameters
+## Load True Parameters and Covariates
+
+Next, we load the true parameters and covariates used in the simulation. These are stored in the `covar.RData` and `parameters.RData` files, respectively.
 
 ```{r}
-source("../01_functions/functions.R")
+load("../../Data/01_simulation/covar.RData")
 load("../../Data/01_simulation/parameters.RData")
 ```
 
-# Load and Combine edgelists
+## Load and Combine edgelists
+
+Lastly, we load and combine the edgelists generated in `01_generating_data.qmd`.
 
 ```{r}
 edgelists <- list()
@@ -47,6 +63,8 @@ for (i in seq_along(files)) {
 
 # Run Selection Function
 
+We first run the selection function. Using the estimates and the assessed criteria, this function selects the chosen predictors.
+
 ```{r}
 select_variables_parallel(
   m = c(100, 200, 400, 800, 1600, 3200, 6400),
@@ -59,7 +77,11 @@ select_variables_parallel(
 
 # Discovery Rates
 
+Next, Discovery Rates are calculated. The function `discovery_rate` calculates the True Discovery Rate (TDR) and False Discovery Rate (FDR) for the selected variables. The function takes the folder with the selected variables, the parameters, the number of edgelists, and whether to calculate TDR or FDR as arguments.
+
 ## True Discovery Rates
+
+First, we calculate the True Discovery Rates (TDR) for both endogenous and exogenous predictors. The TDR is the proportion of true positives among all selected variables.
 
 ### Endogenous Predictors
 
@@ -77,6 +99,8 @@ save(tdr_endo, file = "../../Output/01_result_files/03a_discovery_rates_dependen
 ```
 
 ### Exogenous Predictors
+
+The TDR for exogenous predictors is calculated for three different effect sizes: weak, medium, and strong. The effect sizes are specified in the `effect_size` argument.
 
 ```{r}
 tdr_exo_weak <- discovery_rate(folder = "../../Output/01_result_files/02a_selected_variables_dependent/",
@@ -129,6 +153,8 @@ save(tdr_exo, file = "../../Output/01_result_files/03a_discovery_rates_dependent
 
 ## False Discovery Rates
 
+The False Discovery Rate (FDR) is the proportion of false positives among all selected variables. The FDR is calculated for both endogenous and exogenous predictors.
+
 ### Endogenous Predictors
 
 ```{r}
@@ -163,6 +189,12 @@ save(fdr_exo, file = "../../Output/01_result_files/03a_discovery_rates_dependent
 
 ## Plot Discovery Rates
 
+We then plot the discovery rates for the endogenous and exogenous predictors. The function `plot_discovery_rate` takes the discovery rate data, the criteria to plot, and the title as arguments.
+
+### Criteria
+
+We first specify the criteria to plot. As explained in the thesis, median criteria are excluded from the plots.
+
 ```{r}
 methods <- setdiff(levels(as.factor(tdr_endo$discovery_rate$method)),
                    c("abr_hs_median_01", "abr_ridge_median_01"))
@@ -170,6 +202,8 @@ methods <- setdiff(levels(as.factor(tdr_endo$discovery_rate$method)),
 
 
 ### True Discovery Rates
+
+Then, plots are generated for the TDR of endogenous and exogenous predictors.
 
 ```{r}
 tdr_endo_data <- tdr_endo$discovery_rate %>%
@@ -213,6 +247,8 @@ strong_plot_true <- plot_discovery_rate(tdr_exo_strong_data, criteria = methods,
                                         title = "Strong Exogenous")
 ```
 
+And combined into a single plot.
+
 ```{r}
 # Combine the plots and collect axis titles and legends
 combined_plot_true <- (endog_plot_true + weak_plot_true + medium_plot_true + strong_plot_true) +
@@ -230,6 +266,8 @@ ggsave("../../Output/02_plots/02_variable_selection/true_discovery_rates.png", c
 ```
 
 ### False Discovery Rates
+
+Then, we plot the FDR for endogenous and exogenous predictors.
 
 ```{r}
 fdr_endo_data <- fdr_endo$discovery_rate %>%
@@ -251,6 +289,8 @@ fdr_exo_data <- fdr_exo$discovery_rate %>%
 exog_plot_false <- plot_discovery_rate(fdr_exo_data, criteria = methods, title = "Exogenous")
 ```
 
+And combine them into a single plot.
+
 ```{r}
 # Combine the plots and collect axis titles and legends
 combined_plot_false <- (endog_plot_false + exog_plot_false) +
@@ -268,6 +308,8 @@ ggsave("../../Output/02_plots/02_variable_selection/false_discovery_rates.png", 
 ```
 
 ## Table
+
+The results are additionally combined into a LaTeX table. The table contains the mean and standard error of the discovery rates for each method and sample size.
 
 ### True Discovery Rate
 
@@ -405,6 +447,8 @@ save(fdr_wide, file = "../../Output/03_tables/table_fdr_dependent.tex")
 
 
 # Distance Metrics
+
+We then compute the distance metrics for the selected variables. The distance metric is calculated as the Euclidean distance between the TDR and FDR. The distance metric is calculated for both endogenous and exogenous predictors.
 
 ## Endogenous Predictors
 
@@ -547,6 +591,8 @@ save(distances_wide, file = "../../Output/03_tables/table_distances_dependent.te
 
 
 # Matthews Correlation Coefficient
+
+Lastly, Matthews Correlation Coefficient (MCC) is calculated for the selected variables. The MCC is a measure of the quality of binary classifications. It takes into account true and false positives and negatives, and is generally regarded as a balanced measure that can be used even if the classes are of very different sizes.
 
 ## Endogenous Predictors
 

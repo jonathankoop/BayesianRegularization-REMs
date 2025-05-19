@@ -3,7 +3,19 @@ title: "Predictive Performance"
 format: html
 ---
 
-# Load in Libraries
+# Preparations
+
+## Source Functions
+
+To import all custom functions, we need to source the `functions.R` file. This file contains all the functions used in this project.
+
+```{r}
+source("../01_functions/functions.R")
+```
+
+## Load Packages
+
+Additionally, we need to load the required packages.
 
 ```{r}
 library(remify)
@@ -20,16 +32,21 @@ library(knitr)
 library(kableExtra)
 ```
 
+## Load True Parameters and Covariates
+
+Next, we load the true parameters and covariates used in the simulation. These are stored in the `covar.RData` and `parameters.RData` files, respectively.
+
 ```{r}
-source("../01_functions/functions.R")
 load("../../Data/01_simulation/covar.RData")
 load("../../Data/01_simulation/parameters.RData")
 ```
 
 
-
-
 # Predictive Performance In-Sample
+
+We first assess the predictive performance of the models in-sample. The predictive performance is calculated using the `pp_is_independent_parallel` function, which estimates the models in parallel.
+
+First, we do this for the full models, and then we do it for the sparse models after selecting the variables.
 
 ## Set Up Task List
 
@@ -229,6 +246,8 @@ plot_top20 <- plot_pp_sparse(pp_folder = "../../Output/01_result_files/04c_predi
 ```
 
 # Out-Of Sample
+
+The same thing is then done for the out-of-sample predictive performance. The only difference is that we use the `pp_oos_independent_parallel` function instead of the `pp_is_independent_parallel` function.
 
 ## Set Up Task List
 
