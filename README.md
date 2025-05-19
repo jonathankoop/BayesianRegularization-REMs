@@ -28,7 +28,8 @@ This repository contains data in the following structure:
 ├── renv
 │   ├── activate.R
 │   └── library
-└── renv.lock
+├── renv.lock
+└── Requirements.md
 ```
 
 ### `BayesianRegularization-REMs.Rproj`
@@ -97,6 +98,10 @@ The `Script` folder contains the R scripts used in the analyses. It is divided i
 
 The `renv` folder and the `renv.lock` file contain information about the R environment used in the analyses. Through the renv package, the R environment can be restored to the same state as when the analyses were run.
 
+## `Requirements.md`
+
+The `Requirements.md` file contains the software requirements and refers to the `renv` file that contains the package versions used in the analyses.
+
 ## Reproducing Results
 
 ### Prerequisites
@@ -111,8 +116,8 @@ To reproduce the analyses, the following are needed:
 > ⚠️ **Hardware Requirements:**\
 > Analyses were run on a high-performance machine with the following specifications:
 >
-> -   **CPU**: 112 × Intel(R) Xeon(R) Platinum 8580\
-> -   **Threads**: 224\
+> -   **CPU**: 112 × Intel(R) Xeon(R) Platinum 8580
+> -   **Threads**: 224
 > -   **Memory**: 851 GB RAM
 >
 > Due to processing large arrays containing endogenous statistics for all potential dyads in the risk set for all time points, particularly this memory is needed in order to allow parallel processing.
@@ -151,3 +156,17 @@ The results can be reproduced by running the script as outlined in the steps bel
 
 7.  Run the script in `Script/02_analyses/05_application.qmd` to estimate the models on the Spotify collaboration data, illustrate variable selection and evaluate the predictive performance. The resulting estimates are saved in `Output/01_result_files/05_application` and the plot in `Output/02_plots/04_application`. 
   **Note:** The estimation of the models using MLE and ABR is fast, however, the estimation of the EBR models using `brms` will take considerable time to run (approximately 5 hours).
+  
+## Ethics and Privacy
+
+Ethics approval was granted by [Ethics Review Board of the Faculty of Social & Behavioural Sciences at Utrecht University](https://ferb.sites.uu.nl). The ethical approval case numbers are 24-2053, 24-2054, and 24-2057.
+
+By using the Spotify collaboration data, we acknowledge that the data is publicly available and does not contain any personally identifiable information. The data was collected from the Spotify API and is used in accordance with Spotify's terms of service.
+
+## License
+
+This project is licensed under the GNU General Public License v3.0. See the [LICENSE](LICENSE.md) file for details.
+
+## Permissions and Access
+
+This archive will indefinitely be publicly available on [GitHub](https://github.com/jonathankoop/BayesianRegularization-REMs). Full responsibility for the content of this archive lies with [Jonathan Koop](https://jonathankoop.eu/). In the case of questions, do not hesitate to contact me by emailing [j.koop@uu.nl](mailto:j.koop@uu.nl) or [jonathankoop@proton.me](mailto:jonathankoop@proton.me).
