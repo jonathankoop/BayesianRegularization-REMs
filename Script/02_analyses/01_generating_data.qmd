@@ -108,6 +108,8 @@ parameters <- list(
   "same_z15" = 0,
   "same_z16" = 0
 )
+
+save(parameters, file = "../../Data/01_simulation/parameters.RData")
 ```
 
 
